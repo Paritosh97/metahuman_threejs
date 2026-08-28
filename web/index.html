@@ -10,7 +10,7 @@
     #canvas { display: block; }
     #ui {
       position: fixed; top: 0; right: 0; width: 340px; height: 100vh;
-      background: rgba(0,0,0,0.8); overflow-y: auto; padding: 10px;
+      background: rgba(0,0,0,0.8); overflow-y: auto; overflow-x: hidden; padding: 10px;
       font-size: 11px;
     }
     #ui h3 { color: #f90; margin: 10px 0 4px; border-bottom: 1px solid #444; padding-bottom: 3px; }
@@ -28,18 +28,10 @@
     .bone-btn.selected { background: #a60; border-color: #fa0; color: #fff; }
     #posing-hint { color: #888; font-size: 10px; margin: 4px 0 8px; line-height: 1.4; }
 
-    #faceboard-viewport {
-      position: relative; width: 100%; height: 480px; margin-bottom: 6px;
+    .faceboard-panel {
+      position: relative; width: 100%; margin-bottom: 10px; user-select: none;
       background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
-      overflow: auto; touch-action: pan-x pan-y;
-    }
-    #faceboard-zoom {
-      display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: #888; font-size: 10px;
-    }
-    #faceboard-zoom input[type=range] { flex: 1; }
-    #faceboard {
-      position: relative; width: 900px; height: 900px; user-select: none;
-      transform-origin: 0 0;
+      touch-action: none;
     }
     .fb-dot {
       position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px;
@@ -57,9 +49,30 @@
       font-size: 9px; white-space: nowrap; pointer-events: none;
     }
     .fb-label {
-      position: absolute; transform: translate(-50%, -50%); color: #f90; font-size: 11px;
-      font-weight: bold; white-space: nowrap; pointer-events: none; text-shadow: 0 0 3px #000, 0 0 3px #000;
-      letter-spacing: 0.3px; z-index: 1;
+      position: absolute; transform: translate(-50%, -50%); color: #f90; font-size: 8.5px;
+      font-weight: bold; text-transform: uppercase; white-space: nowrap; pointer-events: none;
+      letter-spacing: 0.4px; opacity: 0.75; z-index: 1;
+    }
+    .fb-box {
+      position: absolute; border: 1px solid rgba(255,153,0,0.4); border-radius: 4px;
+      background: rgba(255,153,0,0.035); pointer-events: none; z-index: 0;
+    }
+    .fb-oval {
+      position: absolute; border: 1px solid rgba(51,204,255,0.3); border-radius: 50%;
+      pointer-events: none; z-index: 0;
+    }
+    .fb-box-label {
+      position: absolute; left: 3px; top: -13px; color: #f90; font-size: 8.5px;
+      font-weight: bold; text-transform: uppercase; letter-spacing: 0.4px;
+      white-space: nowrap; opacity: 0.75; pointer-events: none;
+    }
+    .fb-range-line {
+      position: absolute; height: 1px; background: rgba(51,204,255,0.4);
+      transform-origin: 0% 50%; pointer-events: none; z-index: 1;
+    }
+    .fb-range-box {
+      position: absolute; border: 1px dashed rgba(51,204,255,0.4);
+      pointer-events: none; z-index: 1;
     }
     details.fb-advanced { margin-top: 6px; }
     details.fb-advanced summary { color: #888; cursor: pointer; font-size: 10px; margin-bottom: 4px; }
@@ -1384,6 +1397,11 @@ function splitGuiControlName(fullName) {
   return { side: m[1] || null, base: m[2], axis };
 }
 
+// Native look-at/convergence switches this viewer replaces with its own
+// draggable eye-aim target (see applyEyeAim/buildEyeAimTarget) -- never
+// rendered as face-board dots.
+const FACEBOARD_HIDDEN_KEYS = new Set(['|lookAtSwitch', '|rigLogicSwitch', '|convergenceSwitch']);
+
 function buildFaceBoard(rig, container) {
   const { handle, guiBuf, guiCount } = rig;
   const layout = FACEBOARD_LAYOUT;
@@ -1410,13 +1428,18 @@ function buildFaceBoard(rig, container) {
   }
   const widgetList = Array.from(widgets.values());
 
-  // ── Attach each widget's real Blender layout entry from the JSON ──
+  // ── Attach each widget's real Blender layout entry from the JSON. Each
+  // control also carries a "board" id (1 = main face board, 2 = the
+  // secondary "tweakers" board) -- faceboard_layout.json already splits
+  // and independently re-normalizes positions per board (see its "boards"
+  // key), so the two render as separate, non-overlapping panels below. ──
   const unmatched = [];
   for (const w of widgetList) {
     w.is1D = (w.txIndex === undefined) !== (w.tyIndex === undefined);
     const entry = layout.controls[w.key];
     if (entry) {
       w.entry = entry;
+      w.board = entry.board || 1;
     } else {
       unmatched.push(w);
     }
@@ -1424,8 +1447,13 @@ function buildFaceBoard(rig, container) {
   if (unmatched.length > 0) {
     console.warn(`Face board: ${unmatched.length} control(s) missing from faceboard_layout.json, placing in a fallback corner:`, unmatched.map(w => w.key));
     unmatched.forEach((w, i) => {
+      w.board = 1;
       w.entry = w.is1D
-        ? { rest: { x: 2, y: 2 + i * 3 }, final: { x: 6, y: 2 + i * 3 }, finalValue: (w.txIndex !== undefined ? w.txMax : w.tyMax) || 1 }
+        ? (() => {
+            const min = w.txIndex !== undefined ? w.txMin : w.tyMin;
+            const max = w.txIndex !== undefined ? w.txMax : w.tyMax;
+            return { rest: { x: 2, y: 2 + i * 3 }, final: { x: 6, y: 2 + i * 3 }, finalValue: max || min || 1, min, max };
+          })()
         : { corners: {
               minmin: { x: 2, y: 2 + i * 3 }, maxmin: { x: 6, y: 2 + i * 3 },
               minmax: { x: 2, y: 5 + i * 3 }, maxmax: { x: 6, y: 5 + i * 3 } },
@@ -1433,49 +1461,145 @@ function buildFaceBoard(rig, container) {
     });
   }
 
-  // ── DOM: scrollable/zoomable viewport, one draggable dot per widget ──
-  // positioned from faceboard_layout.json (the board is rendered at a fixed
-  // 900x900 logical size so 169 real, faithfully-spaced Blender control
-  // points aren't crammed into the ~320px sidebar; the viewport below lets
-  // the user scroll and the zoom slider scales it up for precision).
-  const zoomRow = document.createElement('div');
-  zoomRow.id = 'faceboard-zoom';
-  const zoomLabel = document.createElement('span');
-  zoomLabel.textContent = 'zoom';
-  const zoomSlider = document.createElement('input');
-  zoomSlider.type = 'range';
-  zoomSlider.min = '0.5'; zoomSlider.max = '3'; zoomSlider.step = '0.1'; zoomSlider.value = '1';
-  zoomRow.appendChild(zoomLabel);
-  zoomRow.appendChild(zoomSlider);
-  container.appendChild(zoomRow);
+  // ── Two responsive, full-width panels stacked vertically (page/sidebar
+  // scroll handles overflow -- no zoom slider, no horizontal scroll: each
+  // panel's own aspect ratio, precomputed from its real Blender content in
+  // faceboard_layout.json's "boards", keeps it undistorted at any width. ──
+  // FACEBOARD_HIDDEN_KEYS: Blender's native look-at/convergence switches,
+  // superseded by this viewer's own draggable eye-aim target -- keep their
+  // GUI slots initialized (above) but don't clutter the board with dots
+  // for controls this UI no longer drives.
+  for (const boardId of [1, 2]) {
+    const meta = layout.boards[String(boardId)];
+    const boardWidgets = widgetList.filter(w => w.board === boardId && !FACEBOARD_HIDDEN_KEYS.has(w.key));
+    if (!meta || boardWidgets.length === 0) continue;
+    const panel = document.createElement('div');
+    panel.className = 'faceboard-panel';
+    panel.style.aspectRatio = String(1 / meta.aspect);
+    container.appendChild(panel);
+    buildFaceBoardPanel(panel, boardId, meta.aspect, boardWidgets, layout, guiBuf);
+  }
 
-  const viewport = document.createElement('div');
-  viewport.id = 'faceboard-viewport';
-  container.appendChild(viewport);
+  // Reused by applyEyeAim() to write computed x/y directly into the same
+  // GUI control slots (index + min/max) this board already resolved.
+  rig.eyeAimGuiIndices = new Map(widgetList.map(w => [w.key, w]));
 
-  const board = document.createElement('div');
-  board.id = 'faceboard';
-  viewport.appendChild(board);
+  return widgetList;
+}
 
-  zoomSlider.addEventListener('input', () => {
-    board.style.transform = `scale(${zoomSlider.value})`;
-  });
+// Renders one face-board panel (main or tweakers) into `panel`: group boxes,
+// labels, range indicators and draggable dots for `boardWidgets`. `aspect`
+// is this panel's real height/width ratio (from faceboard_layout.json), and
+// is required to correctly compute range-line angles/lengths and 1D drag
+// projections in percent-space, since a non-square panel means 1% of width
+// and 1% of height are different real pixel distances.
+function buildFaceBoardPanel(panel, boardId, aspect, boardWidgets, layout, guiBuf) {
+  // Eye ovals -- besides the rectangular group boxes, Blender's tweakers
+  // board also draws an oval outline around each eye's cluster of controls
+  // (eyelids, eyelashes tweakers, face scrunch). Rendered first (behind
+  // everything else, purely decorative/z-index 0).
+  for (const o of (layout.eyeOvals || [])) {
+    if (o.board !== boardId) continue;
+    const ovalEl = document.createElement('div');
+    ovalEl.className = 'fb-oval';
+    ovalEl.style.left = `${o.minX}%`;
+    ovalEl.style.top = `${o.minY}%`;
+    ovalEl.style.width = `${o.maxX - o.minX}%`;
+    ovalEl.style.height = `${o.maxY - o.minY}%`;
+    panel.appendChild(ovalEl);
+  }
 
-  // Real group-label captions from Blender's face board.
-  for (const l of layout.labels) {
+  // Real group boxes from Blender's face board (e.g. "lip bite", "OH",
+  // "mouth suck" containing "lips together"/"mouth press", etc.) -- the
+  // actual mesh outlines Blender draws to visually cluster related sliders,
+  // extracted as world-space bounding boxes. Rendered first/largest-first
+  // so nested boxes draw on top.
+  const boxes = (layout.groupBoxes || []).filter(b => b.board === boardId);
+  for (const b of boxes) {
+    const boxEl = document.createElement('div');
+    boxEl.className = 'fb-box';
+    boxEl.style.left = `${b.minX}%`;
+    boxEl.style.top = `${b.minY}%`;
+    boxEl.style.width = `${b.maxX - b.minX}%`;
+    boxEl.style.height = `${b.maxY - b.minY}%`;
+    panel.appendChild(boxEl);
+    if (b.label) {
+      const capEl = document.createElement('div');
+      capEl.className = 'fb-box-label';
+      capEl.textContent = b.label;
+      boxEl.appendChild(capEl);
+      const panelRect = panel.getBoundingClientRect();
+      const capRect = capEl.getBoundingClientRect();
+      if (capRect.right > panelRect.right) { capEl.style.left = 'auto'; capEl.style.right = '3px'; }
+    }
+  }
+
+  // Real group-label captions from Blender's face board -- skip any whose
+  // text is already shown as a group box's own caption (see loop above) to
+  // avoid rendering the same label twice.
+  const boxLabelTexts = new Set(boxes.filter(b => b.label).map(b => b.label.toLowerCase()));
+  for (const l of (layout.labels || [])) {
+    if (l.board !== boardId || boxLabelTexts.has(l.text.toLowerCase())) continue;
     const el = document.createElement('div');
     el.className = 'fb-label';
     el.textContent = l.text;
     el.style.left = `${l.x}%`;
     el.style.top = `${l.y}%`;
-    board.appendChild(el);
+    panel.appendChild(el);
+    // Re-anchor away from center if the (nowrap) caption text actually
+    // spills past the panel's left/right edge, measured post-layout so it
+    // works for any text length -- the panel is full-width/responsive now
+    // and must never force horizontal scroll.
+    const panelRect = panel.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    if (elRect.right > panelRect.right) el.style.transform = 'translate(-100%, -50%)';
+    else if (elRect.left < panelRect.left) el.style.transform = 'translate(0, -50%)';
   }
 
-  for (const w of widgetList) {
+  for (const w of boardWidgets) {
+    // Range indicator -- the real extracted rest->final line for 1D
+    // controls, or the real extracted min/max box for 2D controls, so the
+    // user can see how far a control can travel before dragging it.
+    if (w.is1D) {
+      // Span the control's FULL [min,max] range, not just rest(0)->final --
+      // many controls sit at value 0 in the middle of a two-sided range
+      // (e.g. min<0<max) and can be dragged either way from there, so the
+      // line must extend on both sides of the rest point. Bone location is
+      // linear in the control value, so extrapolating faceboardPos1D out to
+      // min/max (beyond the single "final" extreme actually posed in
+      // Blender during extraction) is still exact, not a guess.
+      const pMin = faceboardPos1D(w.entry, w.entry.min);
+      const pMax = faceboardPos1D(w.entry, w.entry.max);
+      const dxPct = pMax.x - pMin.x;
+      const dyPctReal = (pMax.y - pMin.y) * aspect; // convert to width-%-equivalent units
+      const lenPct = Math.hypot(dxPct, dyPctReal);
+      const angleDeg = Math.atan2(dyPctReal, dxPct) * 180 / Math.PI;
+      const line = document.createElement('div');
+      line.className = 'fb-range-line';
+      line.style.left = `${pMin.x}%`;
+      line.style.top = `${pMin.y}%`;
+      line.style.width = `${lenPct}%`;
+      line.style.transform = `rotate(${angleDeg}deg)`;
+      panel.appendChild(line);
+    } else {
+      const c = w.entry.corners;
+      const bx0 = Math.min(c.minmin.x, c.maxmin.x, c.minmax.x, c.maxmax.x);
+      const bx1 = Math.max(c.minmin.x, c.maxmin.x, c.minmax.x, c.maxmax.x);
+      const by0 = Math.min(c.minmin.y, c.maxmin.y, c.minmax.y, c.maxmax.y);
+      const by1 = Math.max(c.minmin.y, c.maxmin.y, c.minmax.y, c.maxmax.y);
+      const rb = document.createElement('div');
+      rb.className = 'fb-range-box';
+      rb.style.left = `${bx0}%`;
+      rb.style.top = `${by0}%`;
+      rb.style.width = `${bx1 - bx0}%`;
+      rb.style.height = `${by1 - by0}%`;
+      panel.appendChild(rb);
+    }
+
     const dot = document.createElement('div');
     dot.className = 'fb-dot' + (w.is1D ? ' fb-1d' : '');
     dot.dataset.label = w.label;
-    board.appendChild(dot);
+    panel.appendChild(dot);
 
     const applyDotPosition = () => {
       let pos;
@@ -1508,22 +1632,25 @@ function buildFaceBoard(rig, container) {
     });
     dot.addEventListener('pointermove', (e) => {
       if (!dragging) return;
-      // Convert the mouse delta into board percent-space via the board's
-      // actual rendered size, so dragging stays correctly scaled at any
-      // zoom level (the CSS zoom transform changes getBoundingClientRect()
-      // accordingly).
-      const rect = board.getBoundingClientRect();
+      // Convert the mouse delta into panel percent-space via the panel's
+      // actual rendered size, so dragging stays correct at any responsive
+      // width/height the panel happens to be laid out at.
+      const rect = panel.getBoundingClientRect();
       const dxPct = (e.clientX - startClientX) / rect.width * 100;
       const dyPct = (e.clientY - startClientY) / rect.height * 100;
 
       if (w.is1D) {
         // Project the mouse delta onto the control's real drag axis -- the
         // exact rest->final vector extracted from Blender, not a guessed
-        // horizontal/vertical/diagonal direction.
+        // horizontal/vertical/diagonal direction. Both vectors are
+        // converted to a common width-%-equivalent scale (via `aspect`)
+        // before the dot product, since raw x-% and y-% are different real
+        // pixel scales on a non-square panel.
         const axisX = w.entry.final.x - w.entry.rest.x;
-        const axisY = w.entry.final.y - w.entry.rest.y;
-        const axisLenSq = axisX * axisX + axisY * axisY;
-        const proj = axisLenSq > 1e-9 ? (dxPct * axisX + dyPct * axisY) / axisLenSq : 0;
+        const axisYReal = (w.entry.final.y - w.entry.rest.y) * aspect;
+        const dyPctReal = dyPct * aspect;
+        const axisLenSq = axisX * axisX + axisYReal * axisYReal;
+        const proj = axisLenSq > 1e-9 ? (dxPct * axisX + dyPctReal * axisYReal) / axisLenSq : 0;
         const deltaValue = proj * w.entry.finalValue;
         if (w.txIndex !== undefined) {
           guiBuf[w.txIndex] = Math.min(w.txMax, Math.max(w.txMin, startTx + deltaValue));
@@ -1533,7 +1660,8 @@ function buildFaceBoard(rig, container) {
       } else {
         // Independent per-axis mapping using the real corner geometry (see
         // faceboardPos2D) -- handles boxes whose screen axes run opposite
-        // to their control axes (e.g. R|mouth_corner) automatically.
+        // to their control axes (e.g. R|mouth_corner) automatically. No
+        // aspect correction needed: x-% and y-% are used independently.
         if (w.txIndex !== undefined) {
           const spanX = w.entry.corners.maxmin.x - w.entry.corners.minmin.x;
           const deltaTx = Math.abs(spanX) > 1e-9 ? dxPct / spanX * (w.entry.maxX - w.entry.minX) : 0;
@@ -1558,12 +1686,6 @@ function buildFaceBoard(rig, container) {
     dot.addEventListener('pointerup', endDrag);
     dot.addEventListener('pointercancel', endDrag);
   }
-
-  // Reused by applyEyeAim() to write computed x/y directly into the same
-  // GUI control slots (index + min/max) this board already resolved.
-  rig.eyeAimGuiIndices = new Map(widgetList.map(w => [w.key, w]));
-
-  return widgetList;
 }
 
 // Draggable 3D target the eyes look at (ports rig_instance.py's eye-aim
