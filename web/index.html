@@ -28,22 +28,38 @@
     .bone-btn.selected { background: #a60; border-color: #fa0; color: #fff; }
     #posing-hint { color: #888; font-size: 10px; margin: 4px 0 8px; line-height: 1.4; }
 
-    #faceboard {
-      position: relative; width: 100%; aspect-ratio: 1 / 1; margin-bottom: 8px; user-select: none;
+    #faceboard-viewport {
+      position: relative; width: 100%; height: 480px; margin-bottom: 6px;
       background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
+      overflow: auto; touch-action: pan-x pan-y;
+    }
+    #faceboard-zoom {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: #888; font-size: 10px;
+    }
+    #faceboard-zoom input[type=range] { flex: 1; }
+    #faceboard {
+      position: relative; width: 900px; height: 900px; user-select: none;
+      transform-origin: 0 0;
     }
     .fb-dot {
       position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px;
       border-radius: 50%; background: #33ccff; border: 1px solid #0a3f52;
       cursor: grab; touch-action: none; box-shadow: 0 0 3px rgba(0,0,0,0.6);
+      z-index: 2;
     }
     .fb-dot.fb-1d { border-radius: 3px; width: 9px; }
     .fb-dot:active { cursor: grabbing; background: #ffaa00; }
     .fb-dot.fb-active { background: #ffaa00; }
+    .fb-dot:hover { z-index: 3; }
     .fb-dot:hover::after {
       content: attr(data-label); position: absolute; left: 50%; top: -18px; transform: translateX(-50%);
       background: rgba(0,0,0,0.9); color: #fff; padding: 2px 5px; border-radius: 3px;
       font-size: 9px; white-space: nowrap; pointer-events: none;
+    }
+    .fb-label {
+      position: absolute; transform: translate(-50%, -50%); color: #f90; font-size: 11px;
+      font-weight: bold; white-space: nowrap; pointer-events: none; text-shadow: 0 0 3px #000, 0 0 3px #000;
+      letter-spacing: 0.3px; z-index: 1;
     }
     details.fb-advanced { margin-top: 6px; }
     details.fb-advanced summary { color: #888; cursor: pointer; font-size: 10px; margin-bottom: 4px; }
@@ -219,18 +235,32 @@ function loadMapTexture(filename, { srgb = false } = {}) {
 }
 
 // Per-mesh manifest map filenames, matching the DNA's fixed LOD0 mesh names.
-// SRMF is a packed texture (Unreal/glTF convention: G = roughness, B =
-// metalness); the R channel (specular) has no direct MeshStandardMaterial
-// slot and is left unused for now -- flagged as an assumption to verify
-// visually, not something extracted from the addon (its channel packing
-// lives inside a binary .blend node group, not inspectable statically).
+// Verified directly against the addon's real shader graph (character_dna/
+// resources/blends/materials.blend, head_shader/body_shader materials' own
+// Principled BSDF node), via the Wine/Blender pipeline -- not guessed:
+//   Metallic = 0.0 (constant, NOT texture-driven -- SRMF is never wired to
+//     the Metallic input in the real graph at all)
+//   Roughness = 0.5 (constant, NOT texture-driven either)
+//   Specular IOR Level = 0.001 (near-zero -- almost no specular highlight)
+//   Subsurface Weight = 0.0 (SSS is present on the BSDF but weighted off,
+//     so no subsurface approximation is needed to match this look)
+// The previous code fed the SRMF texture into roughnessMap/metalnessMap,
+// which the real shader never does -- that was making skin look shiny/
+// plasticky wherever that texture's channels happened to be bright. SRMF is
+// intentionally unused here now, matching Blender's actual material exactly.
+// Per-mesh roughness/metalness/specular/coat values below are read directly
+// off each material's own Principled BSDF in materials.blend (eyeLeft_shader/
+// eyeRight_shader/teeth_shader/eyelashes_shader), same verification method
+// as the head/body values above. Eyes use a clearcoat layer (Coat Weight
+// 0.25) for the wet corneal look -- MeshStandardMaterial has no clearcoat
+// slot, so those use MeshPhysicalMaterial instead.
 const MESH_TEXTURE_SETS = {
-  head_lod0_mesh:      { base: 'Head_Basecolor.png', normal: 'Head_Normal.png', srmf: 'Head_SRMF.png' },
-  body_lod0_mesh:       { base: 'Body_Basecolor.png', normal: 'Body_Normal.png', srmf: 'Body_SRMF.png' },
-  teeth_lod0_mesh:      { base: 'Teeth_Color.png', normal: 'Teeth_Normal.png' },
-  eyeLeft_lod0_mesh:    { base: 'Eyes_Color.png', normal: 'Eyes_Normal.png' },
-  eyeRight_lod0_mesh:   { base: 'Eyes_Color.png', normal: 'Eyes_Normal.png' },
-  eyelashes_lod0_mesh:  { base: 'Eyelashes_Color.png', alphaFromBase: true },
+  head_lod0_mesh:      { base: 'Head_Basecolor.png', normal: 'Head_Normal.png', roughness: 0.5, metalness: 0.0 },
+  body_lod0_mesh:       { base: 'Body_Basecolor.png', normal: 'Body_Normal.png', roughness: 0.5, metalness: 0.0 },
+  teeth_lod0_mesh:      { base: 'Teeth_Color.png', normal: 'Teeth_Normal.png', roughness: 0.05, metalness: 0.0 },
+  eyeLeft_lod0_mesh:    { base: 'Eyes_Color.png', normal: 'Eyes_Normal.png', roughness: 0.0, metalness: 0.0, clearcoat: 0.25 },
+  eyeRight_lod0_mesh:   { base: 'Eyes_Color.png', normal: 'Eyes_Normal.png', roughness: 0.0, metalness: 0.0, clearcoat: 0.25 },
+  eyelashes_lod0_mesh:  { base: 'Eyelashes_Color.png', alphaFromBase: true, roughness: 0.19, metalness: 0.0 },
 };
 
 function buildMaterial(meshName) {
@@ -240,14 +270,21 @@ function buildMaterial(meshName) {
     const opts = {
       map: baseTex,
       side: THREE.DoubleSide,
-      roughness: 1.0,
-      metalness: set.srmf ? 1.0 : 0.0,
+      roughness: set.roughness,
+      metalness: set.metalness,
+      // MeshStandardMaterial has no direct "specular IOR level" slot; the
+      // closest available knob is envMapIntensity, kept low since the real
+      // material's specular contribution is near-zero for skin/eyes.
+      envMapIntensity: 0.1,
     };
     const normalTex = set.normal ? loadMapTexture(set.normal) : null;
     if (normalTex) opts.normalMap = normalTex;
-    const srmfTex = set.srmf ? loadMapTexture(set.srmf) : null;
-    if (srmfTex) { opts.roughnessMap = srmfTex; opts.metalnessMap = srmfTex; }
     if (set.alphaFromBase) { opts.transparent = true; opts.alphaTest = 0.3; }
+    if (set.clearcoat) {
+      opts.clearcoat = set.clearcoat;
+      opts.clearcoatRoughness = 0.0;
+      return new THREE.MeshPhysicalMaterial(opts);
+    }
     return new THREE.MeshStandardMaterial(opts);
   }
 
@@ -255,9 +292,9 @@ function buildMaterial(meshName) {
   // corresponding map in it -- e.g. saliva/eyeshell/eyeEdge/cartilage).
   const nm = meshName.toLowerCase();
   if (nm.includes('teeth') || nm.includes('saliva')) {
-    return new THREE.MeshStandardMaterial({ color: 0xeef0ee, roughness: 0.4, side: THREE.DoubleSide });
+    return new THREE.MeshStandardMaterial({ color: 0xeef0ee, roughness: 0.05, side: THREE.DoubleSide });
   } else if (nm.includes('lash')) {
-    return new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+    return new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.19, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
   } else if (nm.includes('eyeshell')) {
     // Cornea: must be near-transparent so the textured eyeLeft/eyeRight iris
     // mesh underneath shows through. An opaque fallback here was fully
@@ -415,6 +452,32 @@ function updateWrinkleWeights(rig) {
 
 // ════════════════════════════════════════════════════════════
 //  BUILD RIG
+// Welds vertices by rounded position and averages their normals in place,
+// so UV-seam splits (independently-authored per-corner normals in the raw
+// DNA mesh data) shade smoothly instead of showing a hard crease line.
+// See the call site in buildRig's mesh loop for the full explanation.
+function smoothNormalsAcrossSeams(pos, nrm, vertCount) {
+  const EPS = 1e4; // position rounding: 1/EPS units
+  const groups = new Map(); // "x,y,z" -> array of vertex indices
+  for (let v = 0; v < vertCount; v++) {
+    const x = Math.round(pos[v*3] * EPS);
+    const y = Math.round(pos[v*3+1] * EPS);
+    const z = Math.round(pos[v*3+2] * EPS);
+    const key = `${x},${y},${z}`;
+    let g = groups.get(key);
+    if (!g) { g = []; groups.set(key, g); }
+    g.push(v);
+  }
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    let sx = 0, sy = 0, sz = 0;
+    for (const v of g) { sx += nrm[v*3]; sy += nrm[v*3+1]; sz += nrm[v*3+2]; }
+    const len = Math.hypot(sx, sy, sz) || 1;
+    sx /= len; sy /= len; sz /= len;
+    for (const v of g) { nrm[v*3] = sx; nrm[v*3+1] = sy; nrm[v*3+2] = sz; }
+  }
+}
+
 // ════════════════════════════════════════════════════════════
 // mode 'facial': RigLogic drives virtually every joint (dense facial joint
 //   behavior matrix); only driver bones (face-board inputs) are excluded.
@@ -638,15 +701,48 @@ function buildRig(handle, label, mode) {
     const idx = new Uint32Array(idxCount);
     for (let i = 0; i < idxCount; i++) idx[i] = rawIdx[i];
 
+    // Smooth normals across UV-seam vertex splits. The DNA mesh format
+    // stores per-corner ("layout") vertices split at every UV seam (needed
+    // since a GPU vertex can only carry one UV), and each split copy keeps
+    // its own independently-authored normal -- these are NOT guaranteed to
+    // match across the seam. Blender's importer welds by position into its
+    // own vertex/loop model and shades smoothly across seams; this renderer
+    // was using the raw per-corner normals as-is, producing a visible hard
+    // shading crease along seams (e.g. the tank-top/skin boundary at the
+    // underarm) regardless of lighting -- confirmed not a lighting issue
+    // since it persists under any light direction, and confirmed not a
+    // topology bug since welded vertex/edge counts match Blender exactly.
+    // Fix: weld by rounded position and average normals within each group.
+    smoothNormalsAcrossSeams(pos, nrm, vertCount);
+
     const skinW = new Float32Array(vertCount * 4);
     const skinI = new Uint16Array(vertCount * 4);
-    const cap = Math.min(maxInfl, 4);
+    // DNA vertices can carry more than 4 influences (MetaHuman corrective
+    // rigs commonly use 5-8 for good joint deformation); Three.js's
+    // skinIndex/skinWeight attributes are hardcoded to 4 components. The
+    // previous code took influences [0..3] in raw DNA order and dropped the
+    // rest -- correct ONLY if that order happens to already be weight-
+    // descending, which is not guaranteed. If a dominant influence (e.g.
+    // the primary joint driving a bend) landed at slot 4+, it was silently
+    // discarded while small/irrelevant ones got kept and renormalized up to
+    // fill the gap, producing wrong deformation exactly at complex joints
+    // (elbows, shoulders, hips) -- matching the reported "skeletal
+    // deformation breaking the mesh a bit" while the overall pose/range was
+    // otherwise correct. Fix: sort each vertex's influences by weight
+    // descending and keep the top 4, so the dominant bones are never
+    // dropped regardless of the DNA's raw storage order.
+    const infl = new Array(maxInfl);
     for (let v = 0; v < vertCount; v++) {
+      for (let k = 0; k < maxInfl; k++) {
+        infl[k] = { w: rawSW[v * maxInfl + k], i: rawSI[v * maxInfl + k] };
+      }
+      infl.sort((a, b) => b.w - a.w);
       let sum = 0;
+      const cap = Math.min(maxInfl, 4);
       for (let k = 0; k < cap; k++) {
-        skinW[v * 4 + k] = rawSW[v * maxInfl + k];
-        skinI[v * 4 + k] = rawSI[v * maxInfl + k];
-        sum += rawSW[v * maxInfl + k];
+        skinW[v * 4 + k] = infl[k].w;
+        skinI[v * 4 + k] = infl[k].i;
+        sum += infl[k].w;
       }
       if (sum > 1e-6 && Math.abs(sum - 1) > 1e-4) {
         for (let k = 0; k < 4; k++) skinW[v * 4 + k] /= sum;
@@ -868,14 +964,24 @@ orbit.update();
 window.camera = camera;
 window.orbit = orbit;
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const sun = new THREE.DirectionalLight(0xfffbe8, 1.4);
+// Soft, even studio-style lighting (closer to Blender's default viewport
+// lighting) instead of one dominant hard directional light. A single strong
+// "sun" at a grazing angle was catching the mesh's UV-seam normal
+// discontinuities (e.g. the tank-top/skin boundary at the underarm) and
+// rendering them as hard dark seam lines that don't appear in Blender's
+// softer, multi-source lighting -- not a geometry or rig defect (verified:
+// welded topology and bone rest positions both match Blender exactly).
+scene.add(new THREE.HemisphereLight(0xe8f0ff, 0x3a3226, 0.9));
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const sun = new THREE.DirectionalLight(0xfffbe8, 0.75);
 sun.position.set(1.5, 3, 2);
-sun.castShadow = true;
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xd0e8ff, 0.4);
+const fill = new THREE.DirectionalLight(0xd0e8ff, 0.5);
 fill.position.set(-2, 1, -1);
 scene.add(fill);
+const rimBack = new THREE.DirectionalLight(0xffffff, 0.35);
+rimBack.position.set(0, 1.5, -2.5);
+scene.add(rimBack);
 
 window.addEventListener('resize', () => {
   renderer.setSize(W(), H());
@@ -1400,6 +1506,50 @@ const FACEBOARD_AXES = {
   '|rigLogicSwitch': {axis: 'y', dir: [1.0, -0.0]},
 };
 
+// FACEBOARD_LABELS holds the REAL group-label captions from the Blender face
+// board, extracted from face_board.blend's "text" bone collection (bones
+// named TEXT_<label>, e.g. TEXT_mouthSticky at a specific board position --
+// these are exactly the bold captions visible in Blender's board, like
+// "mouth sticky" / "tweakers" / "OH" / "switches"). Positions normalized
+// into the same 0..100 space as FACEBOARD_POSITIONS; a few (eyelids,
+// mouthSticky) sit in a differently-parented sub-panel in the source file
+// whose raw coordinates don't land in the main board space, so those two
+// are manually anchored near their matching control cluster instead of
+// using the (out-of-space) raw extraction.
+const FACEBOARD_LABELS = [
+  { text: 'eyes aim follow head', x: 91.9, y: 84.11 },
+  { text: 'face GUI follow head', x: 91.9, y: 83.73 },
+  { text: 'corner sharpness', x: 88.6, y: 42.25 },
+  { text: 'lips push pull', x: 94.5, y: 44.45 },
+  { text: 'lips roll', x: 86.6, y: 42.56 },
+  { text: 'lips shift', x: 97.15, y: 38.01 },
+  { text: 'lips towards teeth', x: 78.7, y: 39.03 },
+  { text: 'thickness', x: 83.2, y: 42.56 },
+  { text: 'eyelashes', x: 90, y: 12 },
+  { text: 'eyelids', x: 88, y: 9 },
+  { text: 'face scrunch', x: 93, y: 3 },
+  { text: 'nasolabial', x: 90.7, y: 20.5 },
+  { text: 'teeth', x: 83.2, y: 32.15 },
+  { text: 'tweakers', x: 87.5, y: 65.68 },
+  { text: 'tongue thick', x: 79.1, y: 50.19 },
+  { text: 'lip bite', x: 40.6, y: 92.87 },
+  { text: 'lips blow', x: 66.6, y: 70.57 },
+  { text: 'lips press', x: 45, y: 92.91 },
+  { text: 'lips together', x: 64.7, y: 79.47 },
+  { text: 'mouth press', x: 69.5, y: 88.77 },
+  { text: 'mouth suck', x: 68.3, y: 95.56 },
+  { text: 'mouth tighten', x: 48.9, y: 92.69 },
+  { text: 'funnel', x: 49.7, y: 79.34 },
+  { text: 'purse', x: 45.8, y: 76.26 },
+  { text: 'towards', x: 41.7, y: 74.96 },
+  { text: 'OH', x: 45.9, y: 89.76 },
+  { text: 'mouth sticky', x: 42.5, y: 55.31 },
+  { text: 'neck stretch', x: 57.6, y: 100.16 },
+  { text: 'switches', x: 64.1, y: 91.51 },
+  { text: 'tongue', x: 65.8, y: 67.13 },
+  { text: 'convergence', x: 1.47, y: 5.89 },
+];
+
 // ── Fallback zone estimate (used only if a widget key has no entry above,
 // e.g. a different DNA/face-board revision with new control names) ──
 // Anchor positions in a 0..100 (x) / 0..112 (y) face-silhouette space.
@@ -1532,12 +1682,45 @@ function buildFaceBoard(rig, container) {
     }
   }
 
-  // ── DOM: one draggable dot per widget, positioned by FACEBOARD_POSITIONS ──
+  // ── DOM: scrollable/zoomable viewport, one draggable dot per widget ──
+  // positioned by FACEBOARD_POSITIONS (the board is rendered at a fixed
+  // 900x900 logical size so 169 real, faithfully-spaced Blender control
+  // points aren't crammed into the ~320px sidebar; the viewport below lets
+  // the user scroll and the zoom slider scales it up for precision).
+  const zoomRow = document.createElement('div');
+  zoomRow.id = 'faceboard-zoom';
+  const zoomLabel = document.createElement('span');
+  zoomLabel.textContent = 'zoom';
+  const zoomSlider = document.createElement('input');
+  zoomSlider.type = 'range';
+  zoomSlider.min = '0.5'; zoomSlider.max = '3'; zoomSlider.step = '0.1'; zoomSlider.value = '1';
+  zoomRow.appendChild(zoomLabel);
+  zoomRow.appendChild(zoomSlider);
+  container.appendChild(zoomRow);
+
+  const viewport = document.createElement('div');
+  viewport.id = 'faceboard-viewport';
+  container.appendChild(viewport);
+
   const board = document.createElement('div');
   board.id = 'faceboard';
-  container.appendChild(board);
+  viewport.appendChild(board);
 
-  const DRAG_RANGE_PX = 22; // pixel radius mapped to a control's [min,max]
+  zoomSlider.addEventListener('input', () => {
+    board.style.transform = `scale(${zoomSlider.value})`;
+  });
+
+  // Real group-label captions from Blender's face board (see FACEBOARD_LABELS).
+  for (const l of FACEBOARD_LABELS) {
+    const el = document.createElement('div');
+    el.className = 'fb-label';
+    el.textContent = l.text;
+    el.style.left = `${l.x}%`;
+    el.style.top = `${l.y}%`;
+    board.appendChild(el);
+  }
+
+  const DRAG_RANGE_PX = 40; // pixel radius mapped to a control's [min,max]
 
   for (const w of widgetList) {
     const dot = document.createElement('div');

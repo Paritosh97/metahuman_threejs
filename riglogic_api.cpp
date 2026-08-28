@@ -234,6 +234,23 @@ RLHandle* rl_create(const uint8_t* dnaData, uint32_t dnaSize) {
     // Quaternion mode: 10 floats/joint [tx ty tz | qx qy qz qw | sx sy sz]
     rl4::Configuration config{};
     config.rotationType = rl4::RotationType::Quaternions;
+    // Force scalar math instead of the default CalculationType::AnyVector.
+    // AnyVector runtime-detects SSE/AVX/NEON support (via TwistSwingJointsBuilderFactory
+    // and RBFBehaviorFactory) and picks a vectorized code path accordingly. Under
+    // Emscripten/WASM that detection does not reliably reflect what actually got
+    // compiled in, and the twist/swing joint solver (used by every *_correctiveRoot_*
+    // joint) was silently producing NaN quaternion output as a result -- verified
+    // against the real Blender addon (same DNA, same neutral pose, same RigLogic
+    // core) producing correct near-identity output for the exact same joints, so
+    // this is a WASM-specific SIMD-path bug, not an inherent library behavior.
+    // Scalar is slower but this viewer evaluates a handful of times per frame, not
+    // in a hot loop, so correctness wins outright over the vectorized speedup.
+    config.calculationType = rl4::CalculationType::Scalar;
+    // Configuration::floatingPointType defaults to HalfFloat. Half-float precision
+    // on the near-zero rotations correctiveRoot joints carry at rest can round to
+    // exact zero and trip a normalize()/divide-by-zero inside the twist/swing
+    // solver, producing NaN quaternion output. Force full float precision.
+    config.floatingPointType = rl4::FloatingPointType::Float;
 
     rl4::RigLogic* rl = rl4::RigLogic::create(reader.get(), config);
     if (!rl) { std::remove(tmpPath); return nullptr; }
