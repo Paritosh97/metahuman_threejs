@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MetaHuman — Three.js + RigLogic WASM</title>
+  <link rel="icon" href="data:,">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a1a; color: #eee; font-family: monospace; overflow: hidden; }
+    #canvas { display: block; }
+    #ui {
+      position: fixed; top: 0; right: 0; width: 340px; height: 100vh;
+      background: rgba(0,0,0,0.8); overflow-y: auto; padding: 10px;
+      font-size: 11px;
+    }
+    #ui h3 { color: #f90; margin: 10px 0 4px; border-bottom: 1px solid #444; padding-bottom: 3px; }
+    .ctrl { display: flex; align-items: center; gap: 4px; margin: 2px 0; }
+    .ctrl label { width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #bbb; cursor: help; }
+    .ctrl input[type=range] { flex: 1; }
+    .ctrl span { width: 32px; text-align: right; color: #6cf; }
+    #status { position: fixed; bottom: 8px; left: 8px; color: #888; font-size: 11px; }
+    .bone-list { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px; }
+    .bone-btn {
+      background: #222; border: 1px solid #444; color: #bbb; font-family: monospace;
+      font-size: 10px; padding: 3px 6px; border-radius: 3px; cursor: pointer;
+    }
+    .bone-btn:hover { border-color: #6cf; color: #fff; }
+    .bone-btn.selected { background: #a60; border-color: #fa0; color: #fff; }
+    #posing-hint { color: #888; font-size: 10px; margin: 4px 0 8px; line-height: 1.4; }
+
+    #faceboard {
+      position: relative; width: 100%; aspect-ratio: 1 / 1; margin-bottom: 8px; user-select: none;
+      background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
+    }
+    .fb-dot {
+      position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px;
+      border-radius: 50%; background: #33ccff; border: 1px solid #0a3f52;
+      cursor: grab; touch-action: none; box-shadow: 0 0 3px rgba(0,0,0,0.6);
+    }
+    .fb-dot.fb-1d { border-radius: 3px; width: 9px; }
+    .fb-dot:active { cursor: grabbing; background: #ffaa00; }
+    .fb-dot.fb-active { background: #ffaa00; }
+    .fb-dot:hover::after {
+      content: attr(data-label); position: absolute; left: 50%; top: -18px; transform: translateX(-50%);
+      background: rgba(0,0,0,0.9); color: #fff; padding: 2px 5px; border-radius: 3px;
+      font-size: 9px; white-space: nowrap; pointer-events: none;
+    }
+    details.fb-advanced { margin-top: 6px; }
+    details.fb-advanced summary { color: #888; cursor: pointer; font-size: 10px; margin-bottom: 4px; }
+    #loading {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #111; z-index: 99; gap: 14px;
+    }
+    #loading p { color: #aaa; font-size: 14px; }
+    #loadBar { width: 320px; }
+  </style>
+</head>
+<body>
+<div id="loading">
+  <p id="loadMsg">Initialising WASM…</p>
+  <progress id="loadBar" value="0" max="100"></progress>
+</div>
+<canvas id="canvas"></canvas>
+<div id="ui">
+  <div id="ctrl-posing"></div>
+  <div id="ctrl-head"></div>
+  <div id="ctrl-body"></div>
+</div>
+<div id="status"></div>
+
+<script src="js/wasm/riglogic_wasm.js"></script>
+<script type="module">
+import * as THREE from 'https://esm.sh/three@0.133.0';
+import { OrbitControls } from 'https://esm.sh/three@0.133.0/examples/jsm/controls/OrbitControls.js';
+import { TransformControls } from 'https://esm.sh/three@0.133.0/examples/jsm/controls/TransformControls.js';
+
+// ════════════════════════════════════════════════════════════
+//  CONFIG
+// ════════════════════════════════════════════════════════════
+const CHARACTER_DIR = 'metahuman/bazeel';
+const DNA_HEAD = `${CHARACTER_DIR}/head.dna`;
+const DNA_BODY = `${CHARACTER_DIR}/body.dna`;
+const MAPS_DIR = `${CHARACTER_DIR}/Maps`;
+const LOD      = 0;
+// Geometry (positions, deltas) is in metres — C++ converted at load time.
+// Joint output deltas are in centimetres; neutral translations are also in centimetres.
+const CM = 0.01;
+
+// ════════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════════
+const loadMsg  = document.getElementById('loadMsg');
+const loadBar  = document.getElementById('loadBar');
+const statusEl = document.getElementById('status');
+const setMsg    = (msg, pct) => { loadMsg.textContent = msg; if (pct != null) loadBar.value = pct; console.log(msg); };
+const setStatus = t => statusEl.textContent = t;
+
+// ════════════════════════════════════════════════════════════
+//  WAIT FOR WASM
+// ════════════════════════════════════════════════════════════
+setMsg('Loading WASM module…', 5);
+const RL = await new Promise(res => RigLogicModule().then(res));
+
+// ════════════════════════════════════════════════════════════
+//  CWRAP ALL EXPORTS
+// ════════════════════════════════════════════════════════════
+const w = (n, ret, args) => RL.cwrap(n, ret, args);
+
+const rl_create    = w('rl_create',    'number', ['number','number']);
+const rl_destroy   = w('rl_destroy',   null,     ['number']);
+const rl_set_lod   = w('rl_set_lod',   null,     ['number','number']);
+
+// 9 args: handle, guiPtr, guiCount, jntPtr, jntFloatCount,
+//         blendPtr, blendCount, wrinklePtr, wrinkleCount
+const rl_evaluate_gui = w('rl_evaluate_gui', null, [
+  'number','number','number',
+  'number','number',
+  'number','number',
+  'number','number'
+]);
+
+// Split GUI evaluation: rl_set_gui_controls (setGUIControl + mapGUIToRawControls)
+// then, after any rl_set_raw_control driver-bone writes, rl_calculate_and_get_outputs
+// (calculate + copy outputs). mapGUIToRawControls zeroes the whole GUI-mapped raw
+// range, so driver-bone raw controls MUST be set between these two calls, never before.
+const rl_set_gui_controls = w('rl_set_gui_controls', null, ['number','number','number']);
+const rl_calculate_and_get_outputs = w('rl_calculate_and_get_outputs', null, [
+  'number',
+  'number','number',
+  'number','number',
+  'number','number'
+]);
+
+const rl_get_gui_control_count        = w('rl_get_gui_control_count',        'number', ['number']);
+const rl_get_gui_control_min           = w('rl_get_gui_control_min',           'number', ['number','number']);
+const rl_get_gui_control_max           = w('rl_get_gui_control_max',           'number', ['number','number']);
+const rl_get_neutral_joint_translations = w('rl_get_neutral_joint_translations', null, ['number','number','number']);
+const rl_get_neutral_joint_rotations    = w('rl_get_neutral_joint_rotations',    null, ['number','number','number']);
+const rl_get_joint_count              = w('rl_get_joint_count',              'number', ['number']);
+const rl_get_joint_output_float_count = w('rl_get_joint_output_float_count', 'number', ['number']);
+const rl_get_blend_count              = w('rl_get_blend_count',              'number', ['number']);
+const rl_get_wrinkle_count            = w('rl_get_wrinkle_count',            'number', ['number']);
+const rl_get_animated_map_count       = w('rl_get_animated_map_count',       'number', ['number']);
+const rl_get_mesh_count               = w('rl_get_mesh_count',               'number', ['number']);
+const rl_get_raw_control_count        = w('rl_get_raw_control_count',        'number', ['number']);
+
+const rl_get_joint_name               = w('rl_get_joint_name',               'number', ['number','number']);
+const rl_get_joint_parent_index       = w('rl_get_joint_parent_index',       'number', ['number','number']);
+const rl_get_gui_control_name         = w('rl_get_gui_control_name',         'number', ['number','number']);
+const rl_get_raw_control_name         = w('rl_get_raw_control_name',         'number', ['number','number']);
+const rl_get_animated_map_name        = w('rl_get_animated_map_name',        'number', ['number','number']);
+const rl_get_mesh_name                = w('rl_get_mesh_name',                'number', ['number','number']);
+
+// Posing: driven-joint classification + raw-control (driver bone) writes.
+const rl_get_driven_joint_count       = w('rl_get_driven_joint_count',       'number', ['number']);
+const rl_get_driven_joint_indices     = w('rl_get_driven_joint_indices',     null,     ['number','number','number']);
+const rl_set_raw_control              = w('rl_set_raw_control',              null,     ['number','number','number']);
+const rl_get_mesh_vertex_count        = w('rl_get_mesh_vertex_count',        'number', ['number','number']);
+const rl_get_mesh_index_count         = w('rl_get_mesh_index_count',         'number', ['number','number']);
+const rl_get_mesh_max_influences      = w('rl_get_mesh_max_influences',      'number', ['number','number']);
+const rl_get_mesh_blend_shape_count   = w('rl_get_mesh_blend_shape_count',   'number', ['number','number']);
+const rl_get_mesh_blend_shape_channel_index =
+  w('rl_get_mesh_blend_shape_channel_index', 'number', ['number','number','number']);
+
+// 4 args: handle, meshIndex, outPtr, elementCount
+const rl_get_mesh_positions          = w('rl_get_mesh_positions',          null, ['number','number','number','number']);
+const rl_get_mesh_uvs                = w('rl_get_mesh_uvs',                null, ['number','number','number','number']);
+const rl_get_mesh_normals            = w('rl_get_mesh_normals',            null, ['number','number','number','number']);
+const rl_get_mesh_indices            = w('rl_get_mesh_indices',            null, ['number','number','number','number']);
+const rl_get_mesh_skin_weights       = w('rl_get_mesh_skin_weights',       null, ['number','number','number','number']);
+const rl_get_mesh_skin_joint_indices = w('rl_get_mesh_skin_joint_indices', null, ['number','number','number','number']);
+
+// 5 args: handle, meshIndex, bsIndex, outPtr, elementCount
+const rl_get_mesh_blend_shape_deltas = w('rl_get_mesh_blend_shape_deltas', null, ['number','number','number','number','number']);
+
+// ════════════════════════════════════════════════════════════
+//  DNA FILE LOADER
+// ════════════════════════════════════════════════════════════
+async function fetchToWasm(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const ptr   = RL._malloc(bytes.byteLength);
+  RL.HEAPU8.set(bytes, ptr);
+  return { ptr, size: bytes.byteLength };
+}
+
+// ════════════════════════════════════════════════════════════
+//  MATERIALS / TEXTURES
+// ════════════════════════════════════════════════════════════
+// Loads the character's ExportManifest.json (lists available Maps/*.png)
+// once at startup. Falls back to flat placeholder colors per mesh when a
+// manifest, or a specific map within it, isn't available.
+let manifestFiles = new Set();
+try {
+  const res = await fetch(`${CHARACTER_DIR}/ExportManifest.json`);
+  if (res.ok) {
+    const manifest = await res.json();
+    for (const f of manifest.files?.maps || []) manifestFiles.add(f);
+  }
+} catch (err) {
+  console.warn('No ExportManifest.json found; using flat placeholder materials.', err);
+}
+
+const textureLoader = new THREE.TextureLoader();
+const textureCache = new Map();
+function loadMapTexture(filename, { srgb = false } = {}) {
+  if (!manifestFiles.has(filename)) return null;
+  if (textureCache.has(filename)) return textureCache.get(filename);
+  const tex = textureLoader.load(`${MAPS_DIR}/${filename}`);
+  // The bridge already V-flips UVs for WebGL (DNA UVs are top-origin);
+  // flipping again here would undo that correction.
+  tex.flipY = false;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.encoding = srgb ? THREE.sRGBEncoding : THREE.LinearEncoding;
+  textureCache.set(filename, tex);
+  return tex;
+}
+
+// Per-mesh manifest map filenames, matching the DNA's fixed LOD0 mesh names.
+// SRMF is a packed texture (Unreal/glTF convention: G = roughness, B =
+// metalness); the R channel (specular) has no direct MeshStandardMaterial
+// slot and is left unused for now -- flagged as an assumption to verify
+// visually, not something extracted from the addon (its channel packing
+// lives inside a binary .blend node group, not inspectable statically).
+const MESH_TEXTURE_SETS = {
+  head_lod0_mesh:      { base: 'Head_Basecolor.png', normal: 'Head_Normal.png', srmf: 'Head_SRMF.png' },
+  body_lod0_mesh:       { base: 'Body_Basecolor.png', normal: 'Body_Normal.png', srmf: 'Body_SRMF.png' },
+  teeth_lod0_mesh:      { base: 'Teeth_Color.png', normal: 'Teeth_Normal.png' },
+  eyeLeft_lod0_mesh:    { base: 'Eyes_Color.png', normal: 'Eyes_Normal.png' },
+  eyeRight_lod0_mesh:   { base: 'Eyes_Color.png', normal: 'Eyes_Normal.png' },
+  eyelashes_lod0_mesh:  { base: 'Eyelashes_Color.png', alphaFromBase: true },
+};
+
+function buildMaterial(meshName) {
+  const set = MESH_TEXTURE_SETS[meshName];
+  const baseTex = set?.base ? loadMapTexture(set.base, { srgb: true }) : null;
+  if (set && baseTex) {
+    const opts = {
+      map: baseTex,
+      side: THREE.DoubleSide,
+      roughness: 1.0,
+      metalness: set.srmf ? 1.0 : 0.0,
+    };
+    const normalTex = set.normal ? loadMapTexture(set.normal) : null;
+    if (normalTex) opts.normalMap = normalTex;
+    const srmfTex = set.srmf ? loadMapTexture(set.srmf) : null;
+    if (srmfTex) { opts.roughnessMap = srmfTex; opts.metalnessMap = srmfTex; }
+    if (set.alphaFromBase) { opts.transparent = true; opts.alphaTest = 0.3; }
+    return new THREE.MeshStandardMaterial(opts);
+  }
+
+  // Fallback: flat placeholder colors (no manifest, or this mesh has no
+  // corresponding map in it -- e.g. saliva/eyeshell/eyeEdge/cartilage).
+  const nm = meshName.toLowerCase();
+  if (nm.includes('teeth') || nm.includes('saliva')) {
+    return new THREE.MeshStandardMaterial({ color: 0xeef0ee, roughness: 0.4, side: THREE.DoubleSide });
+  } else if (nm.includes('lash')) {
+    return new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+  } else if (nm.includes('eyeshell')) {
+    // Cornea: must be near-transparent so the textured eyeLeft/eyeRight iris
+    // mesh underneath shows through. An opaque fallback here was fully
+    // occluding the eyes, rendering them flat white with no visible pupil.
+    return new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: 0.05, metalness: 0.0,
+      transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false,
+    });
+  } else if (nm.includes('eye') && !nm.includes('edge')) {
+    return new THREE.MeshStandardMaterial({ color: 0x8090a0, roughness: 0.1, side: THREE.DoubleSide });
+  } else if (nm.includes('cartilage')) {
+    return new THREE.MeshStandardMaterial({ color: 0xffeecc, roughness: 0.5, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+  }
+  return new THREE.MeshStandardMaterial({ color: 0xc8a478, roughness: 0.80, metalness: 0.0, side: THREE.DoubleSide });
+}
+
+// ════════════════════════════════════════════════════════════
+//  ANIMATED WRINKLE / COLOR MASKS (head basecolor only)
+// ════════════════════════════════════════════════════════════
+// Blends RigLogic's per-expression animated-map outputs into the head's
+// basecolor using the REAL per-region masks. These are not guessed: they
+// were extracted by headlessly baking the actual materials.blend shader
+// graph (37 named regions, e.g. "head_wm1_blink_L_msk") onto the real head
+// mesh UVs via Blender-under-Wine (the addon's DNA/RigLogic bindings are
+// Windows-only), then packed 4-per-texture into 10 RGBA atlases. The blend
+// formula itself was read directly out of the node graph (MergeMaps.004):
+//   Output = Base + Fac1*(CM1-Base) + Fac2*(CM2-Base) + Fac3*(CM3-Base)
+// where each Fac_i is the sum, over that group's regions, of
+// (region's live RigLogic scalar * region's baked mask sample). Regions
+// named "*_wm13_*" feed both Fac1 and Fac3 (shared between groups 1 and 3
+// in the original shader). Normal-map (wrinkle) blending is not implemented
+// -- only basecolor, which is the visually dominant half of this effect.
+const WRINKLE_DIR = `${CHARACTER_DIR}/Masks/wrinkle_atlas`;
+const WRINKLE_ATLAS_COUNT = 10;
+const WRINKLE_CHANNELS = ['r', 'g', 'b', 'a'];
+
+async function setupWrinkleBlend(rig, mesh) {
+  const material = mesh.material;
+  if (!(material instanceof THREE.MeshStandardMaterial) || !material.map) return;
+
+  let regionList;
+  try {
+    const res = await fetch(`${WRINKLE_DIR}/wrinkle_atlas_index.json`);
+    if (!res.ok) return;
+    regionList = await res.json(); // [{name, atlas: "wrinkle_atlas_N.png", channel}, ...]
+  } catch (err) {
+    console.warn('No wrinkle atlas index found; skipping animated wrinkle/color masks.', err);
+    return;
+  }
+
+  const cm1 = loadMapTexture('Head_Basecolor_Animated_CM1.png', { srgb: true });
+  const cm2 = loadMapTexture('Head_Basecolor_Animated_CM2.png', { srgb: true });
+  const cm3 = loadMapTexture('Head_Basecolor_Animated_CM3.png', { srgb: true });
+  if (!cm1 || !cm2 || !cm3) return; // manifest doesn't have the animated maps for this character
+
+  const atlasTextures = [];
+  for (let i = 0; i < WRINKLE_ATLAS_COUNT; i++) {
+    const tex = textureLoader.load(`${WRINKLE_DIR}/wrinkle_atlas_${i}.png`);
+    tex.flipY = false;
+    tex.encoding = THREE.LinearEncoding;
+    atlasTextures.push(tex);
+  }
+
+  // Match each region name to its live RigLogic animated-map output index
+  // (rl_get_animated_map_name returns "{group}.{regionName}"; cm/wm variants
+  // of the same region share one live value, so the first match wins).
+  const { handle } = rig;
+  const mapCount = rl_get_animated_map_count(handle);
+  const wrinkleIndexByRegion = new Map();
+  for (let i = 0; i < mapCount; i++) {
+    const full = RL.UTF8ToString(rl_get_animated_map_name(handle, i));
+    const dot = full.indexOf('.');
+    // DNA animated-map names omit the "_msk" suffix that the baked mask
+    // filenames/materials.blend interface sockets carry (e.g. DNA has
+    // "head_wm1_blink_L", the mask is named "head_wm1_blink_L_msk").
+    const regionName = (dot >= 0 ? full.slice(dot + 1) : full) + '_msk';
+    if (!wrinkleIndexByRegion.has(regionName)) wrinkleIndexByRegion.set(regionName, i);
+  }
+
+  const resolved = regionList.map(r => ({
+    name: r.name,
+    channel: r.channel,
+    atlasIndex: parseInt(r.atlas.match(/\d+/)[0], 10),
+    wrinkleIdx: wrinkleIndexByRegion.get(r.name),
+    groups: /_wm13_/.test(r.name) ? [1, 3]
+          : /_wm1_/.test(r.name) ? [1]
+          : /_wm2_/.test(r.name) ? [2]
+          : /_wm3_/.test(r.name) ? [3] : [],
+  }));
+  const missing = resolved.filter(r => r.wrinkleIdx === undefined);
+  if (missing.length > 0) {
+    console.warn('Wrinkle regions with no matching RigLogic animated map (skipped):', missing.map(r => r.name));
+  }
+
+  const weights = new Float32Array(resolved.length);
+
+  const sampleTerm = (i) => {
+    const r = resolved[i];
+    return `uMaskWeights[${i}] * texture2D(uWrinkleAtlas${r.atlasIndex}, vUv).${WRINKLE_CHANNELS[r.channel]}`;
+  };
+  const sumForGroup = (g) => {
+    const terms = resolved.map((r, i) => r.groups.includes(g) ? sampleTerm(i) : null).filter(Boolean);
+    return terms.length > 0 ? terms.join(' + ') : '0.0';
+  };
+  const fac1Expr = sumForGroup(1);
+  const fac2Expr = sumForGroup(2);
+  const fac3Expr = sumForGroup(3);
+
+  material.onBeforeCompile = (shader) => {
+    for (let i = 0; i < WRINKLE_ATLAS_COUNT; i++) {
+      shader.uniforms[`uWrinkleAtlas${i}`] = { value: atlasTextures[i] };
+    }
+    shader.uniforms.uCM1 = { value: cm1 };
+    shader.uniforms.uCM2 = { value: cm2 };
+    shader.uniforms.uCM3 = { value: cm3 };
+    shader.uniforms.uMaskWeights = { value: weights };
+
+    const uniformDecls = Array.from({ length: WRINKLE_ATLAS_COUNT }, (_, i) => `uniform sampler2D uWrinkleAtlas${i};`).join('\n')
+      + `\nuniform sampler2D uCM1;\nuniform sampler2D uCM2;\nuniform sampler2D uCM3;\nuniform float uMaskWeights[${resolved.length}];\n`;
+    shader.fragmentShader = uniformDecls + shader.fragmentShader;
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      {
+        float fac1 = clamp(${fac1Expr}, 0.0, 1.0);
+        float fac2 = clamp(${fac2Expr}, 0.0, 1.0);
+        float fac3 = clamp(${fac3Expr}, 0.0, 1.0);
+        vec3 cm1c = texture2D(uCM1, vUv).rgb;
+        vec3 cm2c = texture2D(uCM2, vUv).rgb;
+        vec3 cm3c = texture2D(uCM3, vUv).rgb;
+        diffuseColor.rgb += fac1 * (cm1c - diffuseColor.rgb)
+                           + fac2 * (cm2c - diffuseColor.rgb)
+                           + fac3 * (cm3c - diffuseColor.rgb);
+      }`
+    );
+  };
+  material.needsUpdate = true;
+
+  rig.wrinkleBlend = { resolved, weights };
+}
+
+// Copies this frame's live RigLogic animated-map values into the shader's
+// mask-weight uniform array (mutated in place; Three.js diffs array uniform
+// contents by value, so no extra "needsUpdate" flag is required).
+function updateWrinkleWeights(rig) {
+  const wb = rig.wrinkleBlend;
+  if (!wb) return;
+  const view = rig.wrinkleView;
+  for (let i = 0; i < wb.resolved.length; i++) {
+    const idx = wb.resolved[i].wrinkleIdx;
+    wb.weights[i] = idx !== undefined ? view[idx] : 0;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  BUILD RIG
+// ════════════════════════════════════════════════════════════
+// mode 'facial': RigLogic drives virtually every joint (dense facial joint
+//   behavior matrix); only driver bones (face-board inputs) are excluded.
+//   Matches Blender's head_bone_transform_plan (skips only driver bones).
+// mode 'skeletal': RigLogic only computes corrective outputs (RBF/twist/
+//   swing); everything else is plain FK posed directly by the user and must
+//   never be overwritten by a zero-delta evaluate() result. Matches
+//   Blender's body_bone_transform_plan (driven ∪ swing ∪ twist bones only).
+function buildRig(handle, label, mode) {
+  rl_set_lod(handle, LOD);
+
+  const jointCount   = rl_get_joint_count(handle);
+  const floatCount   = rl_get_joint_output_float_count(handle);
+  const blendCount   = rl_get_blend_count(handle);
+  const wrinkleCount = rl_get_wrinkle_count(handle);
+  const guiCount     = rl_get_gui_control_count(handle);
+  const fpj          = Math.round(floatCount / jointCount);
+  const hasScale     = (fpj >= 10);
+
+  console.log(`${label}: jointCount=${jointCount} floatCount=${floatCount} fpj=${fpj} hasScale=${hasScale}`);
+
+  // ── Persistent eval buffers ────────────────────────────────────────────
+  const guiBuf     = new Float32Array(guiCount);
+  const guiPtr     = RL._malloc(guiCount     * 4);
+  const jntPtr     = RL._malloc(floatCount   * 4);
+  const blendPtr   = RL._malloc(blendCount   * 4);
+  const wrinklePtr = RL._malloc(wrinkleCount * 4);
+
+  // ── Neutral definition-layer transforms ─────────────────────────────────
+  // RigLogic joint outputs are deltas; the DNA neutral pose is the bind pose.
+  // Copy these arrays immediately so later WASM mallocs cannot invalidate them.
+  const ntPtr = RL._malloc(jointCount * 3 * 4);
+  const nrPtr = RL._malloc(jointCount * 3 * 4);
+  rl_get_neutral_joint_translations(handle, ntPtr, jointCount * 3);
+  rl_get_neutral_joint_rotations(handle, nrPtr, jointCount * 3);
+
+  const neutralT = new Float32Array(
+    new Float32Array(RL.HEAPF32.buffer, ntPtr, jointCount * 3)
+  );
+  const neutralR = new Float32Array(
+    new Float32Array(RL.HEAPF32.buffer, nrPtr, jointCount * 3)
+  );
+  RL._free(ntPtr);
+  RL._free(nrPtr);
+
+  const DEG = Math.PI / 180;
+  const neutralQ = [];
+  const e = new THREE.Euler();
+  // DNA rotations are authored for Blender's mathutils.Euler((rx,ry,rz), "XYZ"),
+  // which composes as R = Rz*Ry*Rx (intrinsic X-then-Y-then-Z, matrix product in
+  // reverse). Three.js's OWN 'XYZ' order composes as R = Rx*Ry*Rz -- a DIFFERENT
+  // rotation despite the identical order string. Verified numerically against a
+  // real DNA joint's neutral rotation via the actual Blender addon (Wine): only
+  // THREE.Euler order 'ZYX' reproduces Blender's matrix exactly (zero error);
+  // 'XYZ' diverges completely for any multi-axis triple. This was invisible for
+  // near-single-axis rotations (most body joints) but catastrophically wrong for
+  // facial joints authored near the Y=90 deg gimbal region (e.g. FacialRoot,
+  // causing the eye/jaw/mouth deformation and bind-mismatch bugs).
+  for (let j = 0; j < jointCount; j++) {
+    e.set(
+      neutralR[j*3+0] * DEG,
+      neutralR[j*3+1] * DEG,
+      neutralR[j*3+2] * DEG,
+      'ZYX'
+    );
+    neutralQ.push(new THREE.Quaternion().setFromEuler(e));
+  }
+
+  // Evaluate once so the output buffers are initialized.
+  // All-zero GUI means zero delta, not an absolute zero transform.
+  RL.HEAPF32.set(guiBuf, guiPtr >> 2);
+  rl_evaluate_gui(handle, guiPtr, guiCount,
+                  jntPtr,     floatCount,
+                  blendPtr,   blendCount,
+                  wrinklePtr, wrinkleCount);
+
+  // Cache views after the initial allocations. refreshViews() repairs
+  // them if the WASM heap grows later.
+  const jntView     = new Float32Array(RL.HEAPF32.buffer, jntPtr,     floatCount);
+  const blendView   = new Float32Array(RL.HEAPF32.buffer, blendPtr,   blendCount);
+  const wrinkleView = new Float32Array(RL.HEAPF32.buffer, wrinklePtr, wrinkleCount);
+
+  // ── 1. Local matrices from the DNA neutral bind pose ────────────────────
+  const localMats = [];
+  for (let j = 0; j < jointCount; j++) {
+    const t = new THREE.Vector3(
+      neutralT[j*3+0] * CM,
+      neutralT[j*3+1] * CM,
+      neutralT[j*3+2] * CM
+    );
+    localMats.push(new THREE.Matrix4().compose(
+      t, neutralQ[j], new THREE.Vector3(1, 1, 1)
+    ));
+  }
+
+  // ── 2. Accumulate to world space ──────────────────────────────────────
+  const worldMats = new Array(jointCount);
+  for (let j = 0; j < jointCount; j++) {
+    const p = rl_get_joint_parent_index(handle, j);
+    worldMats[j] = (p < 0)
+      ? localMats[j].clone()
+      : worldMats[p].clone().multiply(localMats[j]);
+  }
+
+  // ── 3. Bones + skeleton ───────────────────────────────────────────────
+  const bones = [];
+  for (let j = 0; j < jointCount; j++) {
+    const bone = new THREE.Bone();
+    bone.name = RL.UTF8ToString(rl_get_joint_name(handle, j));
+    bone.userData.jointIndex = j;
+    bones.push(bone);
+  }
+  for (let j = 0; j < jointCount; j++) {
+    const p = rl_get_joint_parent_index(handle, j);
+    if (p >= 0) bones[p].add(bones[j]);
+  }
+
+  // Bone local transforms are the neutral DNA transforms.
+  for (let j = 0; j < jointCount; j++) {
+    bones[j].position.set(
+      neutralT[j*3+0] * CM,
+      neutralT[j*3+1] * CM,
+      neutralT[j*3+2] * CM
+    );
+    bones[j].quaternion.copy(neutralQ[j]);
+    bones[j].scale.set(1, 1, 1);
+  }
+
+  const boneInverses = worldMats.map(m => m.clone().invert());
+  const skeleton = new THREE.Skeleton(bones, boneInverses);
+
+  const boneByName = new Map();
+  for (const b of bones) boneByName.set(b.name, b);
+
+  // ── Driven-joint classification ─────────────────────────────────────────
+  // Only these joints receive RigLogic's evaluate() output (RBF/twist/swing
+  // corrective transforms). All other joints are posed directly (driver
+  // bones) or stay at the neutral rest pose.
+  const drivenCount = rl_get_driven_joint_count(handle);
+  const drivenJointSet = new Set();
+  if (drivenCount > 0) {
+    const dPtr = RL._malloc(drivenCount * 4);
+    rl_get_driven_joint_indices(handle, dPtr, drivenCount);
+    const rawDriven = new Uint32Array(RL.HEAPU8.buffer, dPtr, drivenCount);
+    for (let i = 0; i < drivenCount; i++) drivenJointSet.add(rawDriven[i]);
+    RL._free(dPtr);
+  }
+
+  // ── Driver-bone raw-control indices ─────────────────────────────────────
+  // Raw controls named "BoneName.qx/qy/qz/qw" are driven directly by a
+  // pose-bone's local quaternion (FK posing), mirroring Blender's
+  // head_raw_quat_plan / body_raw_plan. Grouped by bone name -> {x,y,z,w: rawIndex}.
+  const rawControlCount = rl_get_raw_control_count(handle);
+  const driverBoneRawIndices = new Map();
+  for (let i = 0; i < rawControlCount; i++) {
+    const full = RL.UTF8ToString(rl_get_raw_control_name(handle, i));
+    const dot = full.lastIndexOf('.');
+    if (dot < 0) continue;
+    const boneName = full.slice(0, dot);
+    const axisTag = full.slice(dot + 1);
+    if (!axisTag.startsWith('q')) continue;
+    const axis = axisTag.slice(1);
+    if (axis !== 'x' && axis !== 'y' && axis !== 'z' && axis !== 'w') continue;
+    let entry = driverBoneRawIndices.get(boneName);
+    if (!entry) { entry = {}; driverBoneRawIndices.set(boneName, entry); }
+    entry[axis] = i;
+  }
+
+  // ── Which joints evaluate() is allowed to overwrite ─────────────────────
+  let applyJointSet;
+  if (mode === 'facial') {
+    applyJointSet = new Set();
+    for (let j = 0; j < jointCount; j++) {
+      const bone = bones[j];
+      if (!driverBoneRawIndices.has(bone.name)) applyJointSet.add(j);
+    }
+  } else {
+    applyJointSet = drivenJointSet;
+  }
+
+  // ── 4. Meshes ──────────────────────────────────────────────────────────
+  const meshCount = rl_get_mesh_count(handle);
+  const group = new THREE.Group();
+  group.name = label;
+  const channelMaps = [];
+
+  for (let mi = 0; mi < meshCount; mi++) {
+    const vertCount = rl_get_mesh_vertex_count(handle, mi);
+    if (vertCount === 0) { channelMaps.push([]); continue; }
+
+    const idxCount = rl_get_mesh_index_count(handle, mi);
+    const maxInfl = rl_get_mesh_max_influences(handle, mi);
+    const bsCount = rl_get_mesh_blend_shape_count(handle, mi);
+    const meshName = RL.UTF8ToString(rl_get_mesh_name(handle, mi));
+
+    // Allocate all WASM buffers before creating any typed-array views.
+    const posPtr = RL._malloc(vertCount * 3 * 4);
+    const uvPtr  = RL._malloc(vertCount * 2 * 4);
+    const nrmPtr = RL._malloc(vertCount * 3 * 4);
+    const idxPtr = RL._malloc(idxCount * 4);
+    const swPtr  = RL._malloc(vertCount * maxInfl * 4);
+    const siPtr  = RL._malloc(vertCount * maxInfl * 2);
+
+    rl_get_mesh_positions(handle, mi, posPtr, vertCount * 3);
+    rl_get_mesh_uvs(handle, mi, uvPtr, vertCount * 2);
+    rl_get_mesh_normals(handle, mi, nrmPtr, vertCount * 3);
+    rl_get_mesh_indices(handle, mi, idxPtr, idxCount);
+    rl_get_mesh_skin_weights(handle, mi, swPtr, vertCount * maxInfl);
+    rl_get_mesh_skin_joint_indices(handle, mi, siPtr, vertCount * maxInfl);
+
+    const rawPos = new Float32Array(RL.HEAPF32.buffer, posPtr, vertCount * 3);
+    const rawUV  = new Float32Array(RL.HEAPF32.buffer, uvPtr, vertCount * 2);
+    const rawNrm = new Float32Array(RL.HEAPF32.buffer, nrmPtr, vertCount * 3);
+    const rawIdx = new Uint32Array(RL.HEAPU8.buffer, idxPtr, idxCount);
+    const rawSW  = new Float32Array(RL.HEAPF32.buffer, swPtr, vertCount * maxInfl);
+    const rawSI  = new Uint16Array(RL.HEAPU8.buffer, siPtr, vertCount * maxInfl);
+
+    const pos = new Float32Array(rawPos);
+    const uv = new Float32Array(rawUV);
+    const nrm = new Float32Array(rawNrm);
+    const idx = new Uint32Array(idxCount);
+    for (let i = 0; i < idxCount; i++) idx[i] = rawIdx[i];
+
+    const skinW = new Float32Array(vertCount * 4);
+    const skinI = new Uint16Array(vertCount * 4);
+    const cap = Math.min(maxInfl, 4);
+    for (let v = 0; v < vertCount; v++) {
+      let sum = 0;
+      for (let k = 0; k < cap; k++) {
+        skinW[v * 4 + k] = rawSW[v * maxInfl + k];
+        skinI[v * 4 + k] = rawSI[v * maxInfl + k];
+        sum += rawSW[v * maxInfl + k];
+      }
+      if (sum > 1e-6 && Math.abs(sum - 1) > 1e-4) {
+        for (let k = 0; k < 4; k++) skinW[v * 4 + k] /= sum;
+      }
+    }
+
+    RL._free(posPtr); RL._free(uvPtr); RL._free(nrmPtr);
+    RL._free(idxPtr); RL._free(swPtr); RL._free(siPtr);
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    geo.setAttribute('skinWeight', new THREE.BufferAttribute(skinW, 4));
+    geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinI, 4));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+
+    const chMap = [];
+    if (bsCount > 0) {
+      geo.morphTargetsRelative = true;
+      const morphPos = [];
+      for (let bs = 0; bs < bsCount; bs++) {
+        const dPtr = RL._malloc(vertCount * 3 * 4);
+        rl_get_mesh_blend_shape_deltas(handle, mi, bs, dPtr, vertCount * 3);
+        const rawD = new Float32Array(RL.HEAPF32.buffer, dPtr, vertCount * 3);
+        morphPos.push(new THREE.BufferAttribute(new Float32Array(rawD), 3));
+        RL._free(dPtr);
+        chMap.push(rl_get_mesh_blend_shape_channel_index(handle, mi, bs));
+      }
+      geo.morphAttributes.position = morphPos;
+    }
+    channelMaps.push(chMap);
+
+    const mat = buildMaterial(meshName);
+
+    const mesh = new THREE.SkinnedMesh(geo, mat);
+    mesh.name = meshName;
+    mesh.frustumCulled = false;
+    mesh.userData.channelMapIndex = mi;
+
+    // Explicit identity bind matrix: the skeleton is in world space.
+    mesh.bind(skeleton, new THREE.Matrix4());
+
+    if (bsCount > 0) {
+      mesh.morphTargetInfluences = new Array(bsCount).fill(0);
+      mesh.updateMorphTargets();
+    }
+    group.add(mesh);
+  }
+
+  return {
+    handle, label, group, skeleton,
+    rootBone: bones[0], bones, boneByName,
+    channelMaps,
+    guiBuf, guiPtr, jntPtr, blendPtr, wrinklePtr,
+    neutralT, neutralR, neutralQ,
+    jntView, blendView, wrinkleView,
+    guiCount, jointCount, floatCount, blendCount, wrinkleCount, fpj, hasScale,
+    applyJointSet, driverBoneRawIndices,
+    // Driver bones the user has posed this session; their live bone
+    // quaternion is pushed into raw controls every evaluate() call.
+    posedDriverBones: new Set(),
+  };
+}
+
+// Pushes every posed driver bone's current local quaternion into its
+// RigLogic raw-control indices. Call before rl_evaluate_gui so the pose is
+// included in the same calculate() pass.
+const _deltaQ = new THREE.Quaternion();
+function pushDriverPoses(rig) {
+  const { handle, driverBoneRawIndices, boneByName, posedDriverBones, neutralQ } = rig;
+  for (const boneName of posedDriverBones) {
+    const bone = boneByName.get(boneName);
+    const idx = driverBoneRawIndices.get(boneName);
+    if (!bone || !idx) continue;
+    // RigLogic raw controls expect the bone's rotation DELTA from its rest
+    // pose (Blender's matrix_basis = restLocal^-1 * currentLocal), not the
+    // bone's absolute local quaternion. bone.quaternion here is
+    // neutralQ * userDelta (rotateZ etc. post-multiply onto the rest
+    // quaternion), so we must strip the rest component back out.
+    const j = bone.userData.jointIndex;
+    _deltaQ.copy(neutralQ[j]).invert().multiply(bone.quaternion);
+    if (idx.x !== undefined) rl_set_raw_control(handle, idx.x, _deltaQ.x);
+    if (idx.y !== undefined) rl_set_raw_control(handle, idx.y, _deltaQ.y);
+    if (idx.z !== undefined) rl_set_raw_control(handle, idx.z, _deltaQ.z);
+    if (idx.w !== undefined) rl_set_raw_control(handle, idx.w, _deltaQ.w);
+  }
+}
+
+// Marks a bone as user-posed (its quaternion becomes a RigLogic raw-control
+// input from now on) and requests re-evaluation. Bones with no matching
+// driver-bone raw controls (plain FK bones with no corrective solver reading
+// them) are still posable but never write into RigLogic.
+function markBonePosed(rig, boneName) {
+  rig.posedDriverBones.add(boneName);
+  dirty = true;
+}
+
+// ════════════════════════════════════════════════════════════
+//  EVALUATE + APPLY
+// ════════════════════════════════════════════════════════════
+function refreshViews(rig) {
+  // Emscripten may replace the HEAP buffers when WASM memory grows.
+  // Recreate only the small JS view wrappers; the underlying pointers remain valid.
+  if (rig.jntView.buffer !== RL.HEAPF32.buffer) {
+    rig.jntView = new Float32Array(RL.HEAPF32.buffer, rig.jntPtr, rig.floatCount);
+    rig.blendView = new Float32Array(RL.HEAPF32.buffer, rig.blendPtr, rig.blendCount);
+    rig.wrinkleView = new Float32Array(RL.HEAPF32.buffer, rig.wrinklePtr, rig.wrinkleCount);
+  }
+}
+
+function evaluate(rig) {
+  const { handle, guiBuf, guiPtr, jntPtr, blendPtr, wrinklePtr,
+          guiCount, floatCount, blendCount, wrinkleCount,
+          fpj, hasScale, bones, group, channelMaps,
+          neutralT, neutralQ, applyJointSet } = rig;
+
+  refreshViews(rig);
+
+  // Order matters: rl_set_gui_controls's mapGUIToRawControls() zeroes the
+  // entire GUI-mapped raw-control range, so driver-bone raw-control writes
+  // (pushDriverPoses) MUST happen after it and before calculate.
+  RL.HEAPF32.set(guiBuf, guiPtr >> 2);
+  rl_set_gui_controls(handle, guiPtr, guiCount);
+
+  // Driver-bone poses (direct FK, set via markBonePosed) become raw-control
+  // inputs for this evaluation pass.
+  pushDriverPoses(rig);
+
+  rl_calculate_and_get_outputs(handle,
+                  jntPtr, floatCount,
+                  blendPtr, blendCount,
+                  wrinklePtr, wrinkleCount);
+
+  // RigLogic joint outputs are deltas relative to the DNA neutral pose, and
+  // are only applied to applyJointSet (see buildRig's 'facial'/'skeletal'
+  // mode). Every other joint is either a driver bone (posed directly, see
+  // pushDriverPoses/markBonePosed) or -- for skeletal rigs -- a plain FK
+  // bone with no corrective solver, and must be left untouched here or its
+  // user-authored pose (or neutral rest pose) would be overwritten.
+  // Translation = neutral + delta, rotation = neutral * delta, scale = 1 + delta.
+  const jnt = rig.jntView;
+  const qd = new THREE.Quaternion();
+
+  // RigLogic can output a degenerate (NaN) delta for a joint with no
+  // meaningfully defined behavior (confirmed on real DNA: correctiveRoot
+  // helper bones like upperarm_correctiveRoot_l/thigh_correctiveRoot_l).
+  // NaN fails every numeric comparison, so a plain "< 1e-8" guard silently
+  // lets it through, and multiplyQuaternions then propagates the NaN to
+  // every bone in that joint's subtree -- which is what was making whole
+  // limb segments (the RBF corrective bones actually holding that region's
+  // skin weight) disappear from the render. Guard every component.
+  const finiteOr0 = (v) => (Number.isFinite(v) ? v : 0);
+
+  for (const i of applyJointSet) {
+    const b = i * fpj;
+
+    bones[i].position.set(
+      (neutralT[i*3+0] + finiteOr0(jnt[b+0])) * CM,
+      (neutralT[i*3+1] + finiteOr0(jnt[b+1])) * CM,
+      (neutralT[i*3+2] + finiteOr0(jnt[b+2])) * CM
+    );
+
+    qd.set(jnt[b+3], jnt[b+4], jnt[b+5], jnt[b+6]);
+    if (!(qd.lengthSq() >= 1e-8)) qd.identity(); // catches both near-zero AND NaN
+    bones[i].quaternion.multiplyQuaternions(neutralQ[i], qd);
+
+    if (hasScale) {
+      bones[i].scale.set(
+        1 + finiteOr0(jnt[b+7]),
+        1 + finiteOr0(jnt[b+8]),
+        1 + finiteOr0(jnt[b+9])
+      );
+    } else {
+      bones[i].scale.set(1, 1, 1);
+    }
+  }
+
+  // Apply blend shape weights — no allocation
+  const bld = rig.blendView;
+  for (const mesh of group.children) {
+    if (!mesh.isMesh || !mesh.morphTargetInfluences) continue;
+    const chMap = channelMaps[mesh.userData.channelMapIndex];
+    if (!chMap) continue;
+    for (let bs = 0; bs < chMap.length; bs++) {
+      const gc = chMap[bs];
+      mesh.morphTargetInfluences[bs] = gc < blendCount ? bld[gc] : 0;
+    }
+  }
+
+  updateWrinkleWeights(rig);
+}
+
+// ════════════════════════════════════════════════════════════
+//  THREE.JS SCENE
+// ════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const W = () => window.innerWidth - 340;
+const H = () => window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(W(), H());
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+
+const scene  = new THREE.Scene();
+window.scene = scene;
+window.renderer = renderer;
+window.THREE = THREE;
+scene.background = new THREE.Color(0x282828);
+
+const camera = new THREE.PerspectiveCamera(32, W() / H(), 0.01, 200);
+camera.position.set(0, 1.65, 2.0);
+
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.target.set(0, 1.5, 0);
+orbit.update();
+window.camera = camera;
+window.orbit = orbit;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const sun = new THREE.DirectionalLight(0xfffbe8, 1.4);
+sun.position.set(1.5, 3, 2);
+sun.castShadow = true;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xd0e8ff, 0.4);
+fill.position.set(-2, 1, -1);
+scene.add(fill);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(W(), H());
+  camera.aspect = W() / H();
+  camera.updateProjectionMatrix();
+});
+
+// ════════════════════════════════════════════════════════════
+//  LOAD BOTH DNAs
+// ════════════════════════════════════════════════════════════
+setMsg('Fetching head.dna (50 MB) …', 15);
+const hf = await fetchToWasm(DNA_HEAD);
+setMsg('Creating head rig…', 40);
+const hHandle = rl_create(hf.ptr, hf.size);
+RL._free(hf.ptr);
+if (!hHandle) throw new Error('rl_create failed for head.dna');
+
+setMsg('Fetching body.dna (4.6 MB) …', 50);
+const bf = await fetchToWasm(DNA_BODY);
+setMsg('Creating body rig…', 65);
+const bHandle = rl_create(bf.ptr, bf.size);
+RL._free(bf.ptr);
+if (!bHandle) throw new Error('rl_create failed for body.dna');
+
+setMsg('Building head geometry…', 72);
+const headRig = buildRig(hHandle, 'head', 'facial');
+setMsg('Building body geometry…', 88);
+const bodyRig = buildRig(bHandle, 'body', 'skeletal');
+
+scene.add(headRig.rootBone, headRig.group);
+scene.add(bodyRig.rootBone, bodyRig.group);
+
+const headMainMesh = headRig.group.children.find(m => m.isMesh && m.name === 'head_lod0_mesh');
+if (headMainMesh) {
+  setupWrinkleBlend(headRig, headMainMesh).catch(err => console.warn('setupWrinkleBlend failed:', err));
+}
+
+// ── Head-to-body linkage ────────────────────────────────────────────────
+// head.dna carries its own redundant copy of the shared upper-body chain
+// (spine_04 up through neck_01/neck_02/head, plus the clavicle/upperarm
+// branches) purely so its own RBF/corrective system has something to read
+// -- confirmed by inspecting the real rig in Blender (headlessly, via the
+// actual addon under Wine): every one of these ~27 bones shared by name
+// between head_rig and body_rig carries its own individual Copy Transforms
+// bone constraint (target = the same-named body_rig bone, influence 1.0).
+// It is NOT a single "copy the root" constraint -- an earlier version of
+// this code did that (copying only spine_04) and it visibly broke alignment
+// (rotated/detached head), because spine_04 in head.dna already sits at
+// (almost exactly) the same neutral position as body.dna's spine_04 -- the
+// two DNA files share one coordinate frame natively, so overwriting it was
+// actively wrong, not merely redundant. What actually needs syncing is
+// every shared bone's transform, which matters once the body is posed away
+// from neutral (e.g. rotating an arm), and critically because neck_01/
+// neck_02/head are also head.dna's only three raw-control driver bones
+// (see driverBoneRawIndices) -- so this sync is what feeds head's own
+// eye-look/neck RBF correctives from the body's actual neck orientation,
+// not just cosmetic bone-position bookkeeping.
+const HEAD_BODY_SHARED_BONES = Array.from(headRig.boneByName.keys())
+  .filter(name => bodyRig.boneByName.has(name));
+if (HEAD_BODY_SHARED_BONES.length === 0) {
+  console.warn('No bones shared by name between head and body rigs; head will not follow body.');
+}
+// Sort parents before children (within head's own hierarchy) so each
+// bone's parent has an up-to-date matrixWorld by the time it's processed.
+function boneDepth(bone) {
+  let d = 0, b = bone;
+  while (b.parent && b.parent.isBone) { d++; b = b.parent; }
+  return d;
+}
+HEAD_BODY_SHARED_BONES.sort((a, b) =>
+  boneDepth(headRig.boneByName.get(a)) - boneDepth(headRig.boneByName.get(b))
+);
+window.HEAD_BODY_SHARED_BONES = HEAD_BODY_SHARED_BONES;
+
+const _syncMatrix = new THREE.Matrix4();
+function syncHeadToBody() {
+  for (const name of HEAD_BODY_SHARED_BONES) {
+    const headBone = headRig.boneByName.get(name);
+    const bodyBone = bodyRig.boneByName.get(name);
+    bodyBone.updateWorldMatrix(true, false);
+
+    const parent = headBone.parent;
+    if (parent && parent.isBone) {
+      parent.updateWorldMatrix(true, false);
+      _syncMatrix.copy(parent.matrixWorld).invert().multiply(bodyBone.matrixWorld);
+    } else {
+      _syncMatrix.copy(bodyBone.matrixWorld);
+    }
+    _syncMatrix.decompose(headBone.position, headBone.quaternion, headBone.scale);
+    headBone.updateMatrixWorld(false);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  BONE POSING (driver bones only — rotate gizmo + bone list)
+// ════════════════════════════════════════════════════════════
+// Only driver bones (rig.driverBoneRawIndices) are posable: they're the only
+// joints whose rotation feeds RigLogic as a raw-control input (see
+// pushDriverPoses). Driven/corrective joints are never user-selectable since
+// RigLogic overwrites them every evaluate() call.
+const HANDLE_COLOR = 0x33ccff;
+const HANDLE_COLOR_SELECTED = 0xffaa00;
+const handleGeo = new THREE.SphereGeometry(0.014, 8, 6);
+const pickables = []; // meshes with userData.rig / userData.boneName
+
+function addPosingHandles(rig) {
+  for (const boneName of rig.driverBoneRawIndices.keys()) {
+    const bone = rig.boneByName.get(boneName);
+    if (!bone) continue;
+    const mat = new THREE.MeshBasicMaterial({
+      color: HANDLE_COLOR, depthTest: false, transparent: true, opacity: 0.85,
+    });
+    const handle = new THREE.Mesh(handleGeo, mat);
+    handle.renderOrder = 999;
+    handle.userData.rig = rig;
+    handle.userData.boneName = boneName;
+    bone.add(handle);
+    pickables.push(handle);
+  }
+}
+addPosingHandles(headRig);
+addPosingHandles(bodyRig);
+
+const transformControls = new TransformControls(camera, renderer.domElement);
+transformControls.setMode('rotate');
+transformControls.setSpace('local');
+transformControls.size = 0.6;
+scene.add(transformControls);
+
+// Dragging the gizmo must not also orbit the camera.
+transformControls.addEventListener('dragging-changed', (e) => {
+  orbit.enabled = !e.value;
+});
+
+// TransformControls in rotate mode writes straight into the target object's
+// (the driver bone's) quaternion, which is exactly the raw-control input
+// pushDriverPoses reads every evaluate() call.
+transformControls.addEventListener('change', () => {
+  if (selection) {
+    markBonePosed(selection.rig, selection.boneName);
+  }
+});
+
+let selection = null; // { rig, boneName, bone, handle }
+
+function findHandle(rig, boneName) {
+  return pickables.find(p => p.userData.rig === rig && p.userData.boneName === boneName);
+}
+
+function selectBone(rig, boneName) {
+  const bone = rig.boneByName.get(boneName);
+  if (!bone) return;
+
+  if (selection && selection.handle) selection.handle.material.color.setHex(HANDLE_COLOR);
+  const handle = findHandle(rig, boneName);
+  if (handle) handle.material.color.setHex(HANDLE_COLOR_SELECTED);
+
+  selection = { rig, boneName, bone, handle };
+  transformControls.attach(bone);
+  updateBoneListSelection();
+}
+
+const raycaster = new THREE.Raycaster();
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  // Ignore clicks that are dragging the gizmo itself.
+  if (transformControls.dragging) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(pickables, false);
+  if (hits.length > 0) {
+    const h = hits[0].object;
+    selectBone(h.userData.rig, h.userData.boneName);
+  }
+});
+
+// ── Side-panel bone list ────────────────────────────────────────────────
+// Fingers are a few millimetres across on screen and unreliable to click in
+// 3D, so every driver bone also gets a clickable label here.
+const boneListButtons = []; // { rig, boneName, el }
+
+function buildBoneList(rig, title, container) {
+  const h = document.createElement('h3');
+  h.textContent = title;
+  container.appendChild(h);
+  const wrap = document.createElement('div');
+  wrap.className = 'bone-list';
+  for (const boneName of rig.driverBoneRawIndices.keys()) {
+    const btn = document.createElement('button');
+    btn.className = 'bone-btn';
+    btn.textContent = boneName;
+    btn.addEventListener('click', () => selectBone(rig, boneName));
+    wrap.appendChild(btn);
+    boneListButtons.push({ rig, boneName, el: btn });
+  }
+  container.appendChild(wrap);
+}
+
+function updateBoneListSelection() {
+  for (const { rig, boneName, el } of boneListButtons) {
+    const isSelected = !!selection && selection.rig === rig && selection.boneName === boneName;
+    el.classList.toggle('selected', isSelected);
+  }
+}
+
+function buildPosingUI() {
+  const container = document.getElementById('ctrl-posing');
+  const hint = document.createElement('p');
+  hint.id = 'posing-hint';
+  hint.textContent = 'Click a cyan handle in the viewport, or a bone name below, to select it. Drag the gizmo to rotate.';
+  container.appendChild(hint);
+  buildBoneList(bodyRig, 'BODY BONES', container);
+  buildBoneList(headRig, 'HEAD/NECK BONES', container);
+}
+buildPosingUI();
+
+// ════════════════════════════════════════════════════════════
+//  FACE BOARD — 2D control layout mirroring the DNA's native paired tx/ty
+//  control scheme (CTRL_L_brow_down.ty, CTRL_C_mouth.tx/.ty, etc.), matching
+//  Blender's face_board concept instead of a flat alphabetical slider list.
+// ════════════════════════════════════════════════════════════
+// FACEBOARD_POSITIONS holds the REAL, authored 2D control positions,
+// extracted from the LIVE character_dna addon's runtime face board (via
+// Wine + the real Windows Blender build + an actual head.dna import, not
+// just opening the static face_board.blend template) so parenting/
+// positioning exactly matches what ships. Each CTRL_<side>_<name> bone's
+// armature-space (X, Z) -- the board's real horizontal/vertical layout
+// plane, Y is depth -- was read directly with bpy and normalized from the
+// FULL set's bounding box into this 0..100 (x) / 0..100 (y) space, so the
+// panel's proportions match Blender's actual board layout precisely.
+// Regenerate (headless, no manual placement) if a different DNA/face-board
+// revision changes control names or layout.
+const FACEBOARD_POSITIONS = {
+  'C|eye': {x: 55.04, y: 18.20},
+  'C|eye_parallelLook': {x: 54.40, y: 13.80},
+  'C|jaw': {x: 55.04, y: 71.78},
+  'C|jaw_fwdBack': {x: 59.16, y: 76.18},
+  'C|jaw_openExtreme': {x: 53.02, y: 82.74},
+  'C|mouth': {x: 55.04, y: 42.73},
+  'C|mouth_lipShiftD': {x: 97.15, y: 25.20},
+  'C|mouth_lipShiftU': {x: 97.15, y: 23.56},
+  'C|mouth_stickyD': {x: 42.49, y: 59.78},
+  'C|mouth_stickyU': {x: 42.49, y: 51.00},
+  'C|neck_swallow': {x: 53.00, y: 100.00},
+  'C|teethD': {x: 83.16, y: 25.47},
+  'C|teethU': {x: 83.16, y: 21.06},
+  'C|teeth_fwdBackD': {x: 81.92, y: 25.48},
+  'C|teeth_fwdBackU': {x: 81.92, y: 21.07},
+  'C|tongue_bendTwist': {x: 67.94, y: 49.80},
+  'C|tongue_inOut': {x: 64.81, y: 49.66},
+  'C|tongue_move': {x: 65.81, y: 49.76},
+  'C|tongue_press': {x: 66.87, y: 50.30},
+  'C|tongue_roll': {x: 68.93, y: 50.30},
+  'C|tongue_thickThin': {x: 79.13, y: 35.34},
+  'C|tongue_tipMove': {x: 69.91, y: 49.80},
+  'C|tongue_wideNarrow': {x: 66.87, y: 47.47},
+  'L|brow_down': {x: 56.91, y: 3.42},
+  'L|brow_lateral': {x: 61.79, y: 5.50},
+  'L|brow_raiseIn': {x: 57.50, y: 0.00},
+  'L|brow_raiseOut': {x: 60.89, y: 1.35},
+  'L|ear_up': {x: 66.28, y: 27.98},
+  'L|eye': {x: 60.15, y: 18.20},
+  'L|eye_blink': {x: 62.53, y: 17.58},
+  'L|eye_cheekRaise': {x: 64.23, y: 23.90},
+  'L|eye_eyelidD': {x: 95.80, y: 11.81},
+  'L|eye_eyelidU': {x: 95.80, y: 6.46},
+  'L|eye_faceScrunch': {x: 93.93, y: 3.11},
+  'L|eye_lidPress': {x: 63.91, y: 13.87},
+  'L|eye_pupil': {x: 60.13, y: 14.07},
+  'L|eye_squintInner': {x: 60.28, y: 24.09},
+  'L|eyelashes_tweakerIn': {x: 91.76, y: 8.26},
+  'L|eyelashes_tweakerOut': {x: 92.76, y: 8.26},
+  'L|jaw_ChinRaiseD': {x: 55.51, y: 68.84},
+  'L|jaw_ChinRaiseU': {x: 55.51, y: 63.16},
+  'L|jaw_chinCompress': {x: 60.17, y: 60.99},
+  'L|jaw_clench': {x: 57.80, y: 76.21},
+  'L|mouth_corner': {x: 100.00, y: 24.39},
+  'L|mouth_cornerDepress': {x: 59.36, y: 44.22},
+  'L|mouth_cornerPull': {x: 59.35, y: 40.46},
+  'L|mouth_cornerSharpnessD': {x: 89.74, y: 41.77},
+  'L|mouth_cornerSharpnessU': {x: 89.75, y: 34.27},
+  'L|mouth_dimple': {x: 60.31, y: 42.30},
+  'L|mouth_funnelD': {x: 49.73, y: 72.50},
+  'L|mouth_funnelU': {x: 49.73, y: 66.88},
+  'L|mouth_lipBiteD': {x: 40.64, y: 93.31},
+  'L|mouth_lipBiteU': {x: 40.64, y: 83.76},
+  'L|mouth_lipSticky': {x: 45.86, y: 55.31},
+  'L|mouth_lipsBlow': {x: 66.57, y: 57.75},
+  'L|mouth_lipsPressD': {x: 44.99, y: 93.31},
+  'L|mouth_lipsPressU': {x: 44.99, y: 83.76},
+  'L|mouth_lipsRollD': {x: 87.08, y: 41.77},
+  'L|mouth_lipsRollU': {x: 87.08, y: 34.27},
+  'L|mouth_lipsTogetherD': {x: 64.67, y: 79.01},
+  'L|mouth_lipsTogetherU': {x: 64.67, y: 69.47},
+  'L|mouth_lipsTowardsTeethD': {x: 79.38, y: 28.11},
+  'L|mouth_lipsTowardsTeethU': {x: 79.38, y: 21.43},
+  'L|mouth_lowerLipDepress': {x: 56.32, y: 48.12},
+  'L|mouth_pressD': {x: 69.54, y: 79.01},
+  'L|mouth_pressU': {x: 69.54, y: 69.47},
+  'L|mouth_purseD': {x: 45.77, y: 72.50},
+  'L|mouth_purseU': {x: 45.77, y: 66.87},
+  'L|mouth_pushPullD': {x: 95.62, y: 40.90},
+  'L|mouth_pushPullU': {x: 95.55, y: 35.13},
+  'L|mouth_sharpCornerPull': {x: 57.79, y: 38.90},
+  'L|mouth_stickyInnerD': {x: 43.78, y: 59.78},
+  'L|mouth_stickyInnerU': {x: 43.78, y: 51.00},
+  'L|mouth_stickyOuterD': {x: 45.34, y: 59.78},
+  'L|mouth_stickyOuterU': {x: 45.34, y: 51.00},
+  'L|mouth_stretch': {x: 57.73, y: 46.23},
+  'L|mouth_stretchLipsClose': {x: 55.80, y: 30.73},
+  'L|mouth_suckBlow': {x: 68.33, y: 37.79},
+  'L|mouth_thicknessD': {x: 82.03, y: 41.77},
+  'L|mouth_thicknessInwardD': {x: 84.55, y: 41.77},
+  'L|mouth_thicknessInwardU': {x: 84.55, y: 34.27},
+  'L|mouth_thicknessU': {x: 82.03, y: 34.27},
+  'L|mouth_tightenD': {x: 48.87, y: 93.30},
+  'L|mouth_tightenU': {x: 48.87, y: 83.75},
+  'L|mouth_towardsD': {x: 41.72, y: 72.50},
+  'L|mouth_towardsU': {x: 41.72, y: 66.87},
+  'L|mouth_upperLipRaise': {x: 56.20, y: 37.50},
+  'L|neck_mastoidContract': {x: 58.75, y: 90.78},
+  'L|neck_stretch': {x: 57.62, y: 89.18},
+  'L|nose': {x: 56.43, y: 26.16},
+  'L|nose_nasolabialDeepen': {x: 90.74, y: 20.48},
+  'L|nose_wrinkleUpper': {x: 57.79, y: 12.42},
+  'R|brow_down': {x: 53.19, y: 3.43},
+  'R|brow_lateral': {x: 48.30, y: 5.50},
+  'R|brow_raiseIn': {x: 52.59, y: 0.00},
+  'R|brow_raiseOut': {x: 49.22, y: 1.35},
+  'R|ear_up': {x: 43.79, y: 27.98},
+  'R|eye': {x: 49.94, y: 18.16},
+  'R|eye_blink': {x: 47.54, y: 17.58},
+  'R|eye_cheekRaise': {x: 45.84, y: 23.92},
+  'R|eye_eyelidD': {x: 81.59, y: 11.81},
+  'R|eye_eyelidU': {x: 81.59, y: 6.47},
+  'R|eye_faceScrunch': {x: 83.44, y: 3.11},
+  'R|eye_lidPress': {x: 46.17, y: 13.88},
+  'R|eye_pupil': {x: 49.92, y: 14.05},
+  'R|eye_squintInner': {x: 49.80, y: 24.09},
+  'R|eyelashes_tweakerIn': {x: 85.63, y: 8.26},
+  'R|eyelashes_tweakerOut': {x: 84.63, y: 8.26},
+  'R|jaw_ChinRaiseD': {x: 54.45, y: 68.84},
+  'R|jaw_ChinRaiseU': {x: 54.45, y: 63.16},
+  'R|jaw_chinCompress': {x: 50.02, y: 60.99},
+  'R|jaw_clench': {x: 52.28, y: 76.21},
+  'R|mouth_corner': {x: 94.32, y: 24.39},
+  'R|mouth_cornerDepress': {x: 50.75, y: 44.22},
+  'R|mouth_cornerPull': {x: 50.74, y: 40.46},
+  'R|mouth_cornerSharpnessD': {x: 88.61, y: 41.77},
+  'R|mouth_cornerSharpnessU': {x: 88.60, y: 34.27},
+  'R|mouth_dimple': {x: 49.79, y: 42.30},
+  'R|mouth_funnelD': {x: 47.11, y: 72.51},
+  'R|mouth_funnelU': {x: 47.11, y: 66.86},
+  'R|mouth_lipBiteD': {x: 39.57, y: 93.30},
+  'R|mouth_lipBiteU': {x: 39.57, y: 83.78},
+  'R|mouth_lipSticky': {x: 38.97, y: 55.31},
+  'R|mouth_lipsBlow': {x: 65.77, y: 57.75},
+  'R|mouth_lipsPressD': {x: 43.14, y: 93.30},
+  'R|mouth_lipsPressU': {x: 43.14, y: 83.78},
+  'R|mouth_lipsRollD': {x: 86.12, y: 41.77},
+  'R|mouth_lipsRollU': {x: 86.16, y: 34.27},
+  'R|mouth_lipsTogetherD': {x: 62.82, y: 79.00},
+  'R|mouth_lipsTogetherU': {x: 62.82, y: 69.49},
+  'R|mouth_lipsTowardsTeethD': {x: 78.08, y: 28.10},
+  'R|mouth_lipsTowardsTeethU': {x: 78.08, y: 21.44},
+  'R|mouth_lowerLipDepress': {x: 53.78, y: 48.12},
+  'R|mouth_pressD': {x: 67.69, y: 79.00},
+  'R|mouth_pressU': {x: 67.69, y: 69.49},
+  'R|mouth_purseD': {x: 43.14, y: 72.51},
+  'R|mouth_purseU': {x: 43.15, y: 66.86},
+  'R|mouth_pushPullD': {x: 92.72, y: 40.83},
+  'R|mouth_pushPullU': {x: 92.72, y: 35.10},
+  'R|mouth_sharpCornerPull': {x: 52.30, y: 38.90},
+  'R|mouth_stickyInnerD': {x: 41.04, y: 59.78},
+  'R|mouth_stickyInnerU': {x: 41.04, y: 51.00},
+  'R|mouth_stickyOuterD': {x: 39.57, y: 59.78},
+  'R|mouth_stickyOuterU': {x: 39.57, y: 51.00},
+  'R|mouth_stretch': {x: 52.39, y: 46.23},
+  'R|mouth_stretchLipsClose': {x: 54.27, y: 30.73},
+  'R|mouth_suckBlow': {x: 41.75, y: 37.79},
+  'R|mouth_thicknessD': {x: 81.07, y: 41.77},
+  'R|mouth_thicknessInwardD': {x: 83.59, y: 41.77},
+  'R|mouth_thicknessInwardU': {x: 83.62, y: 34.27},
+  'R|mouth_thicknessU': {x: 81.11, y: 34.27},
+  'R|mouth_tightenD': {x: 47.01, y: 93.29},
+  'R|mouth_tightenU': {x: 47.01, y: 83.77},
+  'R|mouth_towardsD': {x: 39.09, y: 72.51},
+  'R|mouth_towardsU': {x: 39.09, y: 66.86},
+  'R|mouth_upperLipRaise': {x: 53.91, y: 37.50},
+  'R|neck_mastoidContract': {x: 51.32, y: 90.78},
+  'R|neck_stretch': {x: 52.46, y: 89.18},
+  'R|nose': {x: 53.65, y: 26.16},
+  'R|nose_nasolabialDeepen': {x: 86.66, y: 20.48},
+  'R|nose_wrinkleUpper': {x: 52.31, y: 12.42},
+  '|convergenceSwitch': {x: 0.00, y: 5.89},
+  '|eyesAimFollowHead': {x: 91.90, y: 87.51},
+  '|faceGUIfollowHead': {x: 91.90, y: 83.73},
+  '|lookAtSwitch': {x: 64.06, y: 95.29},
+  '|neck_digastricUpDown': {x: 55.04, y: 93.68},
+  '|neck_throatExhaleInhale': {x: 53.92, y: 93.68},
+  '|neck_throatUpDown': {x: 56.15, y: 93.68},
+  '|rigLogicSwitch': {x: 68.15, y: 91.51},
+};
+
+// FACEBOARD_AXES holds the REAL per-control drag direction for single-axis
+// (1D) controls, extracted from the actual runtime face board -- not the
+// bone's own Limit Location rest orientation (which is deceptively always
+// axis-aligned: X locked to 0, Y free 0..1, or vice versa) but the visual
+// "track" mesh (FRM_<name>) that Blender actually snaps the control along.
+// Confirmed by direct testing: e.g. L_mouth_cornerDepress is constrained to
+// pure local-Y in bone-rest terms, yet the FRM_ track mesh backing it is
+// rotated ~141fdeg, and dragging it in Blender genuinely only moves along
+// that diagonal (southeast for this one) -- not vertically. Extracted via
+// the real character_dna addon (Wine + Windows Blender, actual DNA import,
+// not just opening the static .blend) so parenting/positioning matches
+// what ships. `axis` says which GUI axis (tx/ty) this single scalar drives;
+// `dir` is the unit direction in this board's (x%, y%) space to project
+// mouse drag onto. Two-axis (free 2D) controls are not listed here -- they
+// keep the default independent horizontal-tx/vertical-ty behavior, which
+// matches their "X" box widgets in Blender.
+const FACEBOARD_AXES = {
+  'C|eye_parallelLook': {axis: 'y', dir: [1.0, -0.0]},
+  'C|jaw_openExtreme': {axis: 'y', dir: [1.0, -0.0]},
+  'C|mouth_lipShiftD': {axis: 'y', dir: [1.0, -0.0]},
+  'C|mouth_lipShiftU': {axis: 'y', dir: [1.0, -0.0]},
+  'C|neck_swallow': {axis: 'y', dir: [1.0, -0.0]},
+  'L|brow_down': {axis: 'y', dir: [-0.2227, 0.9749]},
+  'L|brow_lateral': {axis: 'y', dir: [-0.9561, 0.293]},
+  'L|brow_raiseIn': {axis: 'y', dir: [0.1108, -0.9938]},
+  'L|brow_raiseOut': {axis: 'y', dir: [0.2656, -0.9641]},
+  'L|ear_up': {axis: 'y', dir: [0.1432, -0.9897]},
+  'L|eye_blink': {axis: 'y', dir: [-0.143, 0.9897]},
+  'L|eye_lidPress': {axis: 'y', dir: [-0.1434, 0.9897]},
+  'L|eye_pupil': {axis: 'y', dir: [1.0, -0.0]},
+  'L|eye_squintInner': {axis: 'y', dir: [-0.8181, -0.5751]},
+  'L|eyelashes_tweakerIn': {axis: 'y', dir: [0.072, 0.9974]},
+  'L|eyelashes_tweakerOut': {axis: 'y', dir: [-0.072, 0.9974]},
+  'L|jaw_chinCompress': {axis: 'y', dir: [-0.4279, -0.9038]},
+  'L|mouth_cornerDepress': {axis: 'y', dir: [0.5539, 0.8326]},
+  'L|mouth_cornerPull': {axis: 'y', dir: [0.5811, -0.8138]},
+  'L|mouth_dimple': {axis: 'y', dir: [0.9819, -0.1895]},
+  'L|mouth_funnelD': {axis: 'y', dir: [-0.6347, -0.7728]},
+  'L|mouth_funnelU': {axis: 'y', dir: [-0.6347, 0.7728]},
+  'L|mouth_lipSticky': {axis: 'y', dir: [-1.0, -0.0]},
+  'L|mouth_lipsBlow': {axis: 'y', dir: [0.6991, 0.715]},
+  'L|mouth_lipsPressD': {axis: 'y', dir: [-0.288, -0.9576]},
+  'L|mouth_lipsPressU': {axis: 'y', dir: [-0.2777, 0.9607]},
+  'L|mouth_lipsTogetherD': {axis: 'y', dir: [-0.288, -0.9576]},
+  'L|mouth_lipsTogetherU': {axis: 'y', dir: [-0.2777, 0.9607]},
+  'L|mouth_lipsTowardsTeethD': {axis: 'y', dir: [-0.2887, -0.9574]},
+  'L|mouth_lipsTowardsTeethU': {axis: 'y', dir: [-0.2777, 0.9607]},
+  'L|mouth_lowerLipDepress': {axis: 'y', dir: [0.1249, 0.9922]},
+  'L|mouth_pressD': {axis: 'y', dir: [-0.288, -0.9576]},
+  'L|mouth_pressU': {axis: 'y', dir: [-0.2777, 0.9607]},
+  'L|mouth_purseD': {axis: 'y', dir: [-0.6347, -0.7728]},
+  'L|mouth_purseU': {axis: 'y', dir: [-0.6347, 0.7728]},
+  'L|mouth_pushPullD': {axis: 'y', dir: [0.6347, 0.7728]},
+  'L|mouth_pushPullU': {axis: 'y', dir: [0.6347, -0.7728]},
+  'L|mouth_sharpCornerPull': {axis: 'y', dir: [0.2291, -0.9734]},
+  'L|mouth_stretch': {axis: 'y', dir: [0.8042, 0.5944]},
+  'L|mouth_stretchLipsClose': {axis: 'y', dir: [-0.0719, 0.9974]},
+  'L|mouth_suckBlow': {axis: 'y', dir: [1.0, -0.0]},
+  'L|mouth_tightenD': {axis: 'y', dir: [-0.288, -0.9576]},
+  'L|mouth_tightenU': {axis: 'y', dir: [-0.2777, 0.9607]},
+  'L|mouth_towardsD': {axis: 'y', dir: [-0.6347, -0.7728]},
+  'L|mouth_towardsU': {axis: 'y', dir: [-0.6347, 0.7728]},
+  'L|mouth_upperLipRaise': {axis: 'y', dir: [0.329, -0.9443]},
+  'L|neck_mastoidContract': {axis: 'y', dir: [0.3871, 0.922]},
+  'L|neck_stretch': {axis: 'y', dir: [0.1432, 0.9897]},
+  'L|nose_nasolabialDeepen': {axis: 'y', dir: [0.4284, -0.9036]},
+  'R|brow_down': {axis: 'y', dir: [0.2155, 0.9765]},
+  'R|brow_lateral': {axis: 'y', dir: [0.9567, 0.2912]},
+  'R|brow_raiseIn': {axis: 'y', dir: [-0.1079, -0.9942]},
+  'R|brow_raiseOut': {axis: 'y', dir: [-0.2656, -0.9641]},
+  'R|ear_up': {axis: 'y', dir: [-0.1432, -0.9897]},
+  'R|eye_blink': {axis: 'y', dir: [0.143, 0.9897]},
+  'R|eye_lidPress': {axis: 'y', dir: [0.1434, 0.9897]},
+  'R|eye_pupil': {axis: 'y', dir: [-1.0, -0.0]},
+  'R|eye_squintInner': {axis: 'y', dir: [0.8181, -0.5751]},
+  'R|eyelashes_tweakerIn': {axis: 'y', dir: [-0.072, 0.9974]},
+  'R|eyelashes_tweakerOut': {axis: 'y', dir: [0.072, 0.9974]},
+  'R|jaw_chinCompress': {axis: 'y', dir: [0.4279, -0.9038]},
+  'R|mouth_cornerDepress': {axis: 'y', dir: [-0.5539, 0.8326]},
+  'R|mouth_cornerPull': {axis: 'y', dir: [-0.5811, -0.8138]},
+  'R|mouth_dimple': {axis: 'y', dir: [-0.9819, -0.1895]},
+  'R|mouth_funnelD': {axis: 'y', dir: [0.6347, -0.7728]},
+  'R|mouth_funnelU': {axis: 'y', dir: [0.6347, 0.7728]},
+  'R|mouth_lipSticky': {axis: 'y', dir: [1.0, -0.0]},
+  'R|mouth_lipsBlow': {axis: 'y', dir: [-0.6991, 0.715]},
+  'R|mouth_lipsPressD': {axis: 'y', dir: [0.2865, -0.9581]},
+  'R|mouth_lipsPressU': {axis: 'y', dir: [0.2865, 0.9581]},
+  'R|mouth_lipsTogetherD': {axis: 'y', dir: [0.2865, -0.9581]},
+  'R|mouth_lipsTogetherU': {axis: 'y', dir: [0.2865, 0.9581]},
+  'R|mouth_lipsTowardsTeethD': {axis: 'y', dir: [0.2861, -0.9582]},
+  'R|mouth_lipsTowardsTeethU': {axis: 'y', dir: [0.2861, 0.9582]},
+  'R|mouth_lowerLipDepress': {axis: 'y', dir: [-0.1249, 0.9922]},
+  'R|mouth_pressD': {axis: 'y', dir: [0.2865, -0.9581]},
+  'R|mouth_pressU': {axis: 'y', dir: [0.2865, 0.9581]},
+  'R|mouth_purseD': {axis: 'y', dir: [0.6347, -0.7728]},
+  'R|mouth_purseU': {axis: 'y', dir: [0.6347, 0.7728]},
+  'R|mouth_pushPullD': {axis: 'y', dir: [-0.6347, 0.7728]},
+  'R|mouth_pushPullU': {axis: 'y', dir: [-0.6347, -0.7728]},
+  'R|mouth_sharpCornerPull': {axis: 'y', dir: [-0.2291, -0.9734]},
+  'R|mouth_stretch': {axis: 'y', dir: [-0.8042, 0.5944]},
+  'R|mouth_stretchLipsClose': {axis: 'y', dir: [0.0719, 0.9974]},
+  'R|mouth_suckBlow': {axis: 'y', dir: [-1.0, -0.0]},
+  'R|mouth_tightenD': {axis: 'y', dir: [0.2865, -0.9581]},
+  'R|mouth_tightenU': {axis: 'y', dir: [0.2865, 0.9581]},
+  'R|mouth_towardsD': {axis: 'y', dir: [0.6347, -0.7728]},
+  'R|mouth_towardsU': {axis: 'y', dir: [0.6347, 0.7728]},
+  'R|mouth_upperLipRaise': {axis: 'y', dir: [-0.329, -0.9443]},
+  'R|neck_mastoidContract': {axis: 'y', dir: [-0.3871, 0.922]},
+  'R|neck_stretch': {axis: 'y', dir: [-0.1432, 0.9897]},
+  'R|nose_nasolabialDeepen': {axis: 'y', dir: [-0.4284, -0.9036]},
+  '|convergenceSwitch': {axis: 'x', dir: [1.0, 0.0]},
+  '|eyesAimFollowHead': {axis: 'y', dir: [1.0, -0.0]},
+  '|faceGUIfollowHead': {axis: 'y', dir: [1.0, -0.0]},
+  '|lookAtSwitch': {axis: 'y', dir: [1.0, -0.0]},
+  '|rigLogicSwitch': {axis: 'y', dir: [1.0, -0.0]},
+};
+
+// ── Fallback zone estimate (used only if a widget key has no entry above,
+// e.g. a different DNA/face-board revision with new control names) ──
+// Anchor positions in a 0..100 (x) / 0..112 (y) face-silhouette space.
+const FACEBOARD_ZONES = {
+  brow_L: {cx: 35, cy: 23.2}, brow_R: {cx: 65, cy: 23.2},
+  ear_L: {cx: 14, cy: 44.6}, ear_R: {cx: 86, cy: 44.6},
+  eye_L: {cx: 35, cy: 35.7}, eye_R: {cx: 65, cy: 35.7}, eye_C: {cx: 50, cy: 33.9},
+  cheek_L: {cx: 30, cy: 44.6}, cheek_R: {cx: 70, cy: 44.6},
+  eyelash_L: {cx: 30, cy: 33.0}, eyelash_R: {cx: 70, cy: 33.0},
+  nose_L: {cx: 45, cy: 50.0}, nose_R: {cx: 55, cy: 50.0},
+  mouthUpper_L: {cx: 40, cy: 60.7}, mouthUpper_R: {cx: 60, cy: 60.7}, mouthUpper_C: {cx: 50, cy: 59.8},
+  mouthLower_L: {cx: 40, cy: 67.9}, mouthLower_R: {cx: 60, cy: 67.9}, mouthLower_C: {cx: 50, cy: 68.8},
+  mouthCorner_L: {cx: 27, cy: 64.3}, mouthCorner_R: {cx: 73, cy: 64.3}, mouthCorner_C: {cx: 50, cy: 64.3},
+  teeth_upper: {cx: 50, cy: 56.2}, teeth_lower: {cx: 50, cy: 71.4},
+  tongue: {cx: 50, cy: 74.1},
+  jaw_C: {cx: 50, cy: 78.6}, jaw_L: {cx: 38, cy: 76.8}, jaw_R: {cx: 62, cy: 76.8},
+  chin_L: {cx: 43, cy: 83.0}, chin_R: {cx: 57, cy: 83.0},
+  neck_L: {cx: 38, cy: 90.2}, neck_R: {cx: 62, cy: 90.2}, neck_C: {cx: 50, cy: 90.2},
+  misc: {cx: 50, cy: 7.1},
+};
+
+// Classifies a GUI control's (base name, side) into a face-board zone.
+// base names come pre-stripped of the "CTRL_" prefix and side token by
+// splitGuiControlName (below), e.g. "brow_down", "mouth_cornerPull".
+function classifyFaceboardZone(base, side) {
+  if (/^brow_/.test(base)) return side === 'R' ? 'brow_R' : 'brow_L';
+  if (/^ear_/.test(base)) return side === 'R' ? 'ear_R' : 'ear_L';
+  if (base === 'eye_cheekRaise' || base === 'eye_faceScrunch') return side === 'R' ? 'cheek_R' : 'cheek_L';
+  if (base === 'eye_parallelLook') return 'eye_C';
+  if (/^eyelashes_/.test(base)) return side === 'R' ? 'eyelash_R' : 'eyelash_L';
+  if (/^eye(_|$)/.test(base)) return side === 'R' ? 'eye_R' : 'eye_L';
+  if (/^nose/.test(base)) return side === 'R' ? 'nose_R' : 'nose_L';
+  if (/^teeth/.test(base)) {
+    if (/U$/.test(base)) return 'teeth_upper';
+    if (/D$/.test(base)) return 'teeth_lower';
+    return 'teeth_upper';
+  }
+  if (/^tongue_/.test(base)) return 'tongue';
+  if (base === 'jaw' || base === 'jaw_fwdBack' || base === 'jaw_openExtreme') return 'jaw_C';
+  if (base === 'jaw_clench') return side === 'R' ? 'jaw_R' : 'jaw_L';
+  if (/^jaw_Chin/.test(base) || base === 'jaw_chinCompress') return side === 'R' ? 'chin_R' : 'chin_L';
+  if (/^neck/.test(base)) {
+    if (side === 'C' || !side) return 'neck_C';
+    return side === 'R' ? 'neck_R' : 'neck_L';
+  }
+  if (base === 'mouth') return 'mouth_C';
+  if (base === 'mouth_corner') return side === 'R' ? 'mouthCorner_R' : side === 'C' ? 'mouthCorner_C' : 'mouthCorner_L';
+  if (/^mouth_/.test(base)) {
+    // Corner/side-shape controls that don't carry an explicit U/D suffix.
+    if (/(corner|stretch|dimple|sticky$|suckBlow|lipsBlow)/i.test(base) && !/[UD]$/.test(base)) {
+      return side === 'R' ? 'mouthCorner_R' : side === 'C' ? 'mouthCorner_C' : 'mouthCorner_L';
+    }
+    if (/D$/.test(base) || /lower/i.test(base)) {
+      return side === 'R' ? 'mouthLower_R' : side === 'C' ? 'mouthLower_C' : 'mouthLower_L';
+    }
+    // Default (including U-suffixed and "upperLipRaise"-style names) -> upper.
+    return side === 'R' ? 'mouthUpper_R' : side === 'C' ? 'mouthUpper_C' : 'mouthUpper_L';
+  }
+  return 'misc';
+}
+
+// "CTRL_L_brow_down.ty" -> { side: 'L', base: 'brow_down', axis: 'ty' }
+// "CTRL_neck_throatUpDown.ty" -> { side: null, base: 'neck_throatUpDown', axis: 'ty' }
+function splitGuiControlName(fullName) {
+  const dot = fullName.lastIndexOf('.');
+  const name = dot >= 0 ? fullName.slice(0, dot) : fullName;
+  const axis = dot >= 0 ? fullName.slice(dot + 1) : '';
+  const m = name.match(/^CTRL_(?:([LRC])_)?(.+)$/);
+  if (!m) return { side: null, base: name, axis };
+  return { side: m[1] || null, base: m[2], axis };
+}
+
+function buildFaceBoard(rig, container) {
+  const { handle, guiBuf, guiCount } = rig;
+
+  // ── Group raw GUI indices into (side, base) widgets with tx/ty indices ──
+  const widgets = new Map(); // key "side|base" -> widget
+  for (let i = 0; i < guiCount; i++) {
+    const full = RL.UTF8ToString(rl_get_gui_control_name(handle, i));
+    const { side, base, axis } = splitGuiControlName(full);
+    const key = `${side || ''}|${base}`;
+    let w = widgets.get(key);
+    if (!w) {
+      w = { side, base, key, label: `${side ? side + '_' : ''}${base}`, zone: classifyFaceboardZone(base, side) };
+      widgets.set(key, w);
+    }
+    if (axis === 'tx') {
+      w.txIndex = i; w.txMin = rl_get_gui_control_min(handle, i); w.txMax = rl_get_gui_control_max(handle, i);
+      guiBuf[i] = Math.min(Math.max(0, w.txMin), w.txMax);
+    }
+    if (axis === 'ty') {
+      w.tyIndex = i; w.tyMin = rl_get_gui_control_min(handle, i); w.tyMax = rl_get_gui_control_max(handle, i);
+      guiBuf[i] = Math.min(Math.max(0, w.tyMin), w.tyMax);
+    }
+  }
+  const widgetList = Array.from(widgets.values());
+
+  // ── Position each widget from the real, authored face-board layout ──
+  // (FACEBOARD_POSITIONS, extracted from face_board.blend). Any widget key
+  // missing from that table (a control the shipped board doesn't have --
+  // none currently, for this DNA) falls back to the estimated zone grid so
+  // the panel still renders something reasonable rather than breaking.
+  const unmatched = [];
+  for (const w of widgetList) {
+    const real = FACEBOARD_POSITIONS[w.key];
+    if (real) {
+      w.baseX = real.x;
+      w.baseY = real.y;
+    } else {
+      unmatched.push(w);
+    }
+  }
+  if (unmatched.length > 0) {
+    console.warn(`Face board: ${unmatched.length} control(s) missing from the extracted layout, using estimated zone positions:`, unmatched.map(w => w.key));
+    const byZone = new Map();
+    for (const w of unmatched) {
+      if (!byZone.has(w.zone)) byZone.set(w.zone, []);
+      byZone.get(w.zone).push(w);
+    }
+    const SPACING = 3.6;
+    for (const [zone, list] of byZone) {
+      const anchor = FACEBOARD_ZONES[zone] || FACEBOARD_ZONES.misc;
+      const cols = Math.max(1, Math.ceil(Math.sqrt(list.length)));
+      list.forEach((w, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        w.baseX = anchor.cx + (col - (cols - 1) / 2) * SPACING;
+        w.baseY = anchor.cy + row * SPACING;
+      });
+    }
+  }
+
+  // ── DOM: one draggable dot per widget, positioned by FACEBOARD_POSITIONS ──
+  const board = document.createElement('div');
+  board.id = 'faceboard';
+  container.appendChild(board);
+
+  const DRAG_RANGE_PX = 22; // pixel radius mapped to a control's [min,max]
+
+  for (const w of widgetList) {
+    const dot = document.createElement('div');
+    dot.className = 'fb-dot' + (w.txIndex === undefined ? ' fb-1d' : '');
+    dot.dataset.label = w.label;
+    dot.style.left = `${w.baseX}%`;
+    dot.style.top = `${w.baseY}%`;
+    board.appendChild(dot);
+
+    // Single-axis (1D) controls: real drag direction from FACEBOARD_AXES
+    // (the Blender track-mesh angle -- see the table's comment). Most
+    // sliders are NOT vertical/horizontal in the real board; only 2D
+    // (free tx+ty) controls keep the default axis-aligned box behavior.
+    const is1D = (w.txIndex === undefined) !== (w.tyIndex === undefined);
+    const axisInfo = is1D ? FACEBOARD_AXES[w.key] : null;
+    const axisDir = axisInfo ? axisInfo.dir : (w.tyIndex !== undefined ? [0, -1] : [1, 0]);
+
+    let dragging = false;
+    let startX = 0, startY = 0;
+    let startTx = 0, startTy = 0;
+
+    const valueToOffsetPx = () => {
+      if (is1D) {
+        const idx = w.txIndex !== undefined ? w.txIndex : w.tyIndex;
+        const min = w.txIndex !== undefined ? w.txMin : w.tyMin;
+        const max = w.txIndex !== undefined ? w.txMax : w.tyMax;
+        if (max <= min) return { ox: 0, oy: 0 };
+        const frac = ((guiBuf[idx] - min) / (max - min) - 0.5) * 2; // -1..1
+        return { ox: frac * DRAG_RANGE_PX * axisDir[0], oy: frac * DRAG_RANGE_PX * axisDir[1] };
+      }
+      const ox = w.txIndex !== undefined && w.txMax > w.txMin
+        ? ((guiBuf[w.txIndex] - w.txMin) / (w.txMax - w.txMin) - 0.5) * 2 * DRAG_RANGE_PX
+        : 0;
+      const oy = w.tyIndex !== undefined && w.tyMax > w.tyMin
+        ? ((guiBuf[w.tyIndex] - w.tyMin) / (w.tyMax - w.tyMin) - 0.5) * -2 * DRAG_RANGE_PX
+        : 0;
+      return { ox, oy };
+    };
+    const applyDotOffset = () => {
+      const { ox, oy } = valueToOffsetPx();
+      dot.style.transform = `translate(${ox}px, ${oy}px)`;
+    };
+    applyDotOffset();
+
+    dot.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      try { dot.setPointerCapture(e.pointerId); } catch (err) { /* no active pointer to capture */ }
+      startX = e.clientX; startY = e.clientY;
+      startTx = w.txIndex !== undefined ? guiBuf[w.txIndex] : 0;
+      startTy = w.tyIndex !== undefined ? guiBuf[w.tyIndex] : 0;
+      dot.classList.add('fb-active');
+      orbit.enabled = false;
+      e.stopPropagation();
+    });
+    dot.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      if (is1D) {
+        // Project the mouse delta onto the control's real (possibly
+        // diagonal) drag axis instead of assuming horizontal/vertical.
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const frac = (dx * axisDir[0] + dy * axisDir[1]) / DRAG_RANGE_PX;
+        if (w.txIndex !== undefined) {
+          guiBuf[w.txIndex] = Math.min(w.txMax, Math.max(w.txMin, startTx + frac * (w.txMax - w.txMin) / 2));
+        } else {
+          guiBuf[w.tyIndex] = Math.min(w.tyMax, Math.max(w.tyMin, startTy + frac * (w.tyMax - w.tyMin) / 2));
+        }
+      } else {
+        if (w.txIndex !== undefined) {
+          const dx = e.clientX - startX;
+          const frac = dx / DRAG_RANGE_PX; // -1..1 roughly, unclamped input
+          const val = Math.min(w.txMax, Math.max(w.txMin, startTx + frac * (w.txMax - w.txMin) / 2));
+          guiBuf[w.txIndex] = val;
+        }
+        if (w.tyIndex !== undefined) {
+          const dy = e.clientY - startY;
+          const frac = -dy / DRAG_RANGE_PX;
+          const val = Math.min(w.tyMax, Math.max(w.tyMin, startTy + frac * (w.tyMax - w.tyMin) / 2));
+          guiBuf[w.tyIndex] = val;
+        }
+      }
+      applyDotOffset();
+      dirty = true;
+    });
+    const endDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      try { dot.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+      dot.classList.remove('fb-active');
+      orbit.enabled = true;
+    };
+    dot.addEventListener('pointerup', endDrag);
+    dot.addEventListener('pointercancel', endDrag);
+  }
+
+  return widgetList;
+}
+
+// ════════════════════════════════════════════════════════════
+//  GUI
+// ════════════════════════════════════════════════════════════
+// Builds the flat, alphabetical slider list (one row per raw GUI control
+// index) into `container`. Used as the collapsed "advanced" fallback under
+// the face board, and as the only view for rigs with no face-board layout
+// (currently just the body rig, which has 0 GUI controls in this DNA).
+function buildFlatGUIList(rig, container) {
+  const { handle, guiBuf, guiCount } = rig;
+  for (let i = 0; i < guiCount; i++) {
+    const name = RL.UTF8ToString(rl_get_gui_control_name(handle, i));
+    const row  = document.createElement('div');
+    row.className = 'ctrl';
+    const lbl = document.createElement('label');
+    lbl.title = name; lbl.textContent = name;
+    const slider = document.createElement('input');
+    const min = rl_get_gui_control_min(rig.handle, i);
+    const max = rl_get_gui_control_max(rig.handle, i);
+    // Idempotent with buildFaceBoard's own clamp -- recomputing the same
+    // formula for an index the face board already initialized is a no-op.
+    const initial = Math.min(Math.max(0, min), max);
+    guiBuf[i] = initial;
+    slider.type = 'range'; slider.min = min; slider.max = max;
+    slider.step = 0.01; slider.value = initial;
+    const valSpan = document.createElement('span');
+    valSpan.textContent = Number(initial).toFixed(2);
+    slider.addEventListener('input', () => {
+      guiBuf[i] = parseFloat(slider.value);
+      valSpan.textContent = Number(slider.value).toFixed(2);
+      dirty = true;
+    });
+    row.append(lbl, slider, valSpan);
+    container.appendChild(row);
+  }
+}
+
+function buildGUI(rig, containerId, { faceBoard = false } = {}) {
+  const { guiCount } = rig;
+  if (guiCount === 0) return;
+  const container = document.getElementById(containerId);
+  const h = document.createElement('h3');
+  h.textContent = `${rig.label.toUpperCase()} — ${guiCount} controls`;
+  container.appendChild(h);
+
+  if (faceBoard) {
+    buildFaceBoard(rig, container);
+    const details = document.createElement('details');
+    details.className = 'fb-advanced';
+    const summary = document.createElement('summary');
+    summary.textContent = `Advanced: all ${guiCount} controls (flat list)`;
+    details.appendChild(summary);
+    buildFlatGUIList(rig, details);
+    container.appendChild(details);
+  } else {
+    buildFlatGUIList(rig, container);
+  }
+}
+
+buildGUI(headRig, 'ctrl-head', { faceBoard: true });
+buildGUI(bodyRig, 'ctrl-body');
+
+window.headRig = headRig;
+window.bodyRig = bodyRig;
+window.__evaluate = evaluate;
+window.__transformControls = transformControls;
+window.__syncHeadToBody = syncHeadToBody;
+window.__dumpAnimatedMapNames = (rig) => {
+  const n = rl_get_animated_map_count(rig.handle);
+  const names = [];
+  for (let i = 0; i < n; i++) names.push(RL.UTF8ToString(rl_get_animated_map_name(rig.handle, i)));
+  return names;
+};
+window.__getSelection = () => selection;
+window.__selectBone = selectBone;
+
+// ════════════════════════════════════════════════════════════
+//  RENDER LOOP
+// ════════════════════════════════════════════════════════════
+setMsg('Ready', 100);
+document.getElementById('loading').style.display = 'none';
+
+let dirty = true;
+let frames = 0, t0 = performance.now();
+
+function animate() {
+  requestAnimationFrame(animate);
+  orbit.update();
+  if (dirty) {
+    evaluate(headRig);
+    evaluate(bodyRig);
+    // syncHeadToBody() is intentionally NOT called: head.dna and body.dna's
+    // neutral poses are already coordinate-aligned natively (verified by
+    // inspecting the real rig in Blender -- head.dna's own spine_04 rest
+    // position matches body.dna's to 6 decimal places with no runtime
+    // constraint applied). Calling it visibly breaks head placement here
+    // (confirmed empirically: identical numeric bone position/rotation
+    // targets, yet the rendered head ends up detached/misrotated) for a
+    // reason not fully root-caused -- likely a quaternion-sign or bind-time
+    // vs runtime skinning mismatch specific to this Three.js/Y-up port.
+    // Known limitation: without this sync, head.dna's own copy of shared
+    // upper-body bones (clavicle/upperarm/spine) will NOT follow if the body
+    // is posed away from neutral via the gizmo -- acceptable for now since
+    // head_lod0_mesh isn't skinned to those bones; only neck_01/neck_02/head
+    // (which head_lod0_mesh IS skinned to, and which are also head's own
+    // driver bones) would matter, and posing those directly on the head
+    // rig itself remains unaffected.
+    dirty = false;
+  }
+  renderer.render(scene, camera);
+  if (++frames >= 60) {
+    const fps = (frames / ((performance.now() - t0) / 1000)).toFixed(0);
+    setStatus(`${fps} fps  |  head: ${headRig.jointCount}j ${headRig.blendCount}bs  |  body: ${bodyRig.jointCount}j ${bodyRig.blendCount}bs`);
+    frames = 0; t0 = performance.now();
+  }
+}
+animate();
+</script>
+</body>
+</html>

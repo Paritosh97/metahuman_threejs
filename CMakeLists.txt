@@ -613,3 +613,56 @@ sanitize_targets(${RL} ${RL_TEST_TARGETS} ${RL_BENCHMARK_TARGETS} ${RL_EXAMPLES}
 # Add targets for running clang-tidy, cppcheck, ...
 include(Analysis)
 analyze_targets(${RL} ${RL_TEST_LIB} ${RL_TEST_RUNNER} ${RL_BENCHMARK_RUNNER} ${RL_EXAMPLES})
+
+# ── WASM build target ──────────────────────────────────────────────────────────
+if(EMSCRIPTEN)
+    add_executable(riglogic_wasm ${CMAKE_SOURCE_DIR}/riglogic_api.cpp)
+
+    target_link_libraries(riglogic_wasm PRIVATE riglogic4)
+
+    target_include_directories(riglogic_wasm PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+
+    set_target_properties(riglogic_wasm PROPERTIES
+        CXX_STANDARD 11
+        CXX_STANDARD_REQUIRED YES
+    )
+
+    # Comma-separated format — no brackets, no quotes, no CMake parser issues
+    set(WASM_FUNCS
+    "_rl_create,_rl_destroy,_rl_evaluate,_rl_evaluate_gui,_rl_set_lod,\
+_rl_get_raw_control_count,_rl_get_gui_control_count,\
+_rl_get_gui_control_min,_rl_get_gui_control_max,\
+_rl_get_neutral_joint_translations,_rl_get_neutral_joint_rotations,\
+_rl_get_joint_output_float_count,\
+_rl_get_blend_count,_rl_get_wrinkle_count,\
+_rl_get_joint_count,_rl_get_blend_shape_channel_count,\
+_rl_get_animated_map_count,_rl_get_mesh_count,\
+_rl_get_joint_name,_rl_get_joint_parent_index,\
+_rl_get_gui_control_name,_rl_get_raw_control_name,\
+_rl_get_blend_shape_channel_name,_rl_get_animated_map_name,_rl_get_mesh_name,\
+_rl_get_mesh_vertex_count,_rl_get_mesh_index_count,\
+_rl_get_mesh_max_influences,_rl_get_mesh_blend_shape_count,\
+_rl_get_mesh_blend_shape_channel_index,\
+_rl_get_mesh_positions,_rl_get_mesh_uvs,_rl_get_mesh_normals,\
+_rl_get_mesh_indices,_rl_get_mesh_skin_weights,\
+_rl_get_mesh_skin_joint_indices,_rl_get_mesh_blend_shape_deltas,\
+_rl_set_raw_control,_rl_get_driven_joint_count,_rl_get_driven_joint_indices,\
+_rl_set_gui_controls,_rl_calculate_and_get_outputs,\
+_malloc,_free"
+)
+
+    target_link_options(riglogic_wasm PRIVATE
+        -sWASM=1
+        -sEXPORT_ES6=0
+        -sMODULARIZE=1
+        -sEXPORT_NAME=RigLogicModule
+        -sALLOW_MEMORY_GROWTH=1
+        -sINITIAL_MEMORY=67108864
+        -sMAXIMUM_MEMORY=268435456
+        -sFORCE_FILESYSTEM=1
+        "SHELL:-sEXPORTED_RUNTIME_METHODS=['HEAPU8','HEAPU16','HEAPF32','HEAP32','UTF8ToString','cwrap','ccall']"
+        "SHELL:-sEXPORTED_FUNCTIONS=${WASM_FUNCS}"
+    )
+endif()
