@@ -1,0 +1,2897 @@
+{
+ "controls": {
+  "L|brow_down": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 30.761,
+    "y": 14.264
+   },
+   "final": {
+    "x": 29.127,
+    "y": 21.427
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|brow_lateral": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 38.032,
+    "y": 16.023
+   },
+   "final": {
+    "x": 32.118,
+    "y": 17.839
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|brow_raiseIn": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 31.642,
+    "y": 11.372
+   },
+   "final": {
+    "x": 32.461,
+    "y": 4.005
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|brow_raiseOut": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 36.699,
+    "y": 12.515
+   },
+   "final": {
+    "x": 38.638,
+    "y": 5.466
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|brow_down": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 25.214,
+    "y": 14.273
+   },
+   "final": {
+    "x": 26.796,
+    "y": 21.453
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|brow_lateral": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 17.919,
+    "y": 16.027
+   },
+   "final": {
+    "x": 23.835,
+    "y": 17.83
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|brow_raiseIn": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 24.314,
+    "y": 11.37
+   },
+   "final": {
+    "x": 23.514,
+    "y": 4.0
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|brow_raiseOut": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 19.288,
+    "y": 12.509
+   },
+   "final": {
+    "x": 17.35,
+    "y": 5.46
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|jaw_ChinRaiseD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 28.679,
+    "y": 69.628
+   },
+   "final": {
+    "x": 28.679,
+    "y": 65.9
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|jaw_ChinRaiseU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 28.678,
+    "y": 64.821
+   },
+   "final": {
+    "x": 28.678,
+    "y": 61.092
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|jaw_ChinRaiseD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 27.089,
+    "y": 69.628
+   },
+   "final": {
+    "x": 27.089,
+    "y": 65.9
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|jaw_ChinRaiseU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 27.092,
+    "y": 64.821
+   },
+   "final": {
+    "x": 27.092,
+    "y": 61.092
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|jaw_chinCompress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 35.627,
+    "y": 62.982
+   },
+   "final": {
+    "x": 34.098,
+    "y": 59.753
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|jaw_chinCompress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 20.492,
+    "y": 62.982
+   },
+   "final": {
+    "x": 22.021,
+    "y": 59.753
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|ear_up": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 44.738,
+    "y": 35.051
+   },
+   "final": {
+    "x": 45.797,
+    "y": 27.729
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|ear_up": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 11.195,
+    "y": 35.051
+   },
+   "final": {
+    "x": 10.136,
+    "y": 27.73
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|eye": {
+   "type": "2d",
+   "rest": {
+    "x": 27.967,
+    "y": 26.772
+   },
+   "corners": {
+    "minmin": {
+     "x": 25.447,
+     "y": 29.843
+    },
+    "maxmin": {
+     "x": 30.486,
+     "y": 29.843
+    },
+    "minmax": {
+     "x": 25.447,
+     "y": 23.701
+    },
+    "maxmax": {
+     "x": 30.486,
+     "y": 23.701
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "C|eye_parallelLook": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 27.015,
+    "y": 23.047
+   },
+   "final": {
+    "x": 29.43,
+    "y": 23.047
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|eye": {
+   "type": "2d",
+   "rest": {
+    "x": 35.588,
+    "y": 26.772
+   },
+   "corners": {
+    "minmin": {
+     "x": 33.639,
+     "y": 29.149
+    },
+    "maxmin": {
+     "x": 37.537,
+     "y": 29.149
+    },
+    "minmax": {
+     "x": 33.639,
+     "y": 24.396
+    },
+    "maxmax": {
+     "x": 37.537,
+     "y": 24.396
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "L|eye_blink": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 39.148,
+    "y": 26.247
+   },
+   "final": {
+    "x": 39.649,
+    "y": 22.781
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|eye_cheekRaise": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 41.683,
+    "y": 31.598
+   },
+   "final": {
+    "x": 41.683,
+    "y": 27.137
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|eye_lidPress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 41.197,
+    "y": 23.112
+   },
+   "final": {
+    "x": 40.773,
+    "y": 26.041
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|eye_pupil": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 35.568,
+    "y": 23.279
+   },
+   "final": {
+    "x": 33.273,
+    "y": 23.279
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|eye_squintInner": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 35.78,
+    "y": 31.757
+   },
+   "final": {
+    "x": 33.14,
+    "y": 29.899
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|eye": {
+   "type": "2d",
+   "rest": {
+    "x": 20.359,
+    "y": 26.743
+   },
+   "corners": {
+    "minmin": {
+     "x": 18.41,
+     "y": 29.119
+    },
+    "maxmin": {
+     "x": 22.308,
+     "y": 29.119
+    },
+    "minmax": {
+     "x": 18.41,
+     "y": 24.366
+    },
+    "maxmax": {
+     "x": 22.308,
+     "y": 24.366
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "R|eye_blink": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 16.786,
+    "y": 26.247
+   },
+   "final": {
+    "x": 16.285,
+    "y": 22.781
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|eye_cheekRaise": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 14.245,
+    "y": 31.61
+   },
+   "final": {
+    "x": 14.245,
+    "y": 27.15
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|eye_lidPress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 14.737,
+    "y": 23.113
+   },
+   "final": {
+    "x": 15.16,
+    "y": 26.041
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|eye_pupil": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 20.333,
+    "y": 23.265
+   },
+   "final": {
+    "x": 22.628,
+    "y": 23.265
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|eye_squintInner": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 20.159,
+    "y": 31.757
+   },
+   "final": {
+    "x": 22.8,
+    "y": 29.899
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "|eyesAimFollowHead": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 82.939,
+    "y": 85.428
+   },
+   "final": {
+    "x": 89.037,
+    "y": 85.428
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "|faceGUIfollowHead": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 82.939,
+    "y": 82.231
+   },
+   "final": {
+    "x": 89.037,
+    "y": 82.231
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|tongue_thickThin": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 63.895,
+    "y": 41.281
+   },
+   "final": {
+    "x": 63.895,
+    "y": 43.894
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|teeth_fwdBackD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 68.061,
+    "y": 32.931
+   },
+   "final": {
+    "x": 68.061,
+    "y": 34.502
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|teeth_fwdBackU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 68.061,
+    "y": 29.199
+   },
+   "final": {
+    "x": 68.061,
+    "y": 30.77
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|teethD": {
+   "type": "2d",
+   "rest": {
+    "x": 69.913,
+    "y": 32.926
+   },
+   "corners": {
+    "minmin": {
+     "x": 68.694,
+     "y": 34.413
+    },
+    "maxmin": {
+     "x": 71.133,
+     "y": 34.413
+    },
+    "minmax": {
+     "x": 68.694,
+     "y": 31.439
+    },
+    "maxmax": {
+     "x": 71.133,
+     "y": 31.439
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "C|teethU": {
+   "type": "2d",
+   "rest": {
+    "x": 69.913,
+    "y": 29.193
+   },
+   "corners": {
+    "minmin": {
+     "x": 68.694,
+     "y": 30.68
+    },
+    "maxmin": {
+     "x": 71.133,
+     "y": 30.68
+    },
+    "minmax": {
+     "x": 68.694,
+     "y": 27.706
+    },
+    "maxmax": {
+     "x": 71.133,
+     "y": 27.706
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "L|mouth_cornerSharpnessD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 79.725,
+    "y": 46.723
+   },
+   "final": {
+    "x": 79.725,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_cornerSharpnessU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 79.739,
+    "y": 40.374
+   },
+   "final": {
+    "x": 79.739,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_cornerSharpnessD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 78.038,
+    "y": 46.723
+   },
+   "final": {
+    "x": 78.038,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_cornerSharpnessU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 78.023,
+    "y": 40.374
+   },
+   "final": {
+    "x": 78.023,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|eye_eyelidD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 88.762,
+    "y": 21.366
+   },
+   "final": {
+    "x": 88.762,
+    "y": 22.853
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|eye_eyelidU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 88.761,
+    "y": 16.839
+   },
+   "final": {
+    "x": 88.761,
+    "y": 15.353
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|eyelashes_tweakerIn": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 82.732,
+    "y": 18.36
+   },
+   "final": {
+    "x": 82.625,
+    "y": 16.878
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|eyelashes_tweakerOut": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 84.228,
+    "y": 18.36
+   },
+   "final": {
+    "x": 84.334,
+    "y": 16.878
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_corner": {
+   "type": "2d",
+   "rest": {
+    "x": 95.024,
+    "y": 32.008
+   },
+   "corners": {
+    "minmin": {
+     "x": 94.049,
+     "y": 33.197
+    },
+    "maxmin": {
+     "x": 96.0,
+     "y": 33.197
+    },
+    "minmax": {
+     "x": 94.049,
+     "y": 30.818
+    },
+    "maxmax": {
+     "x": 96.0,
+     "y": 30.818
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "L|nose_nasolabialDeepen": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 81.208,
+    "y": 28.704
+   },
+   "final": {
+    "x": 82.732,
+    "y": 25.485
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_pushPullD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 88.486,
+    "y": 45.979
+   },
+   "final": {
+    "x": 86.761,
+    "y": 43.877
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_pushPullU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 88.387,
+    "y": 41.096
+   },
+   "final": {
+    "x": 86.663,
+    "y": 43.199
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_pushPullD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 84.162,
+    "y": 45.926
+   },
+   "final": {
+    "x": 85.887,
+    "y": 43.823
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_pushPullU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 84.167,
+    "y": 41.072
+   },
+   "final": {
+    "x": 85.892,
+    "y": 43.175
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_lipsRollD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 75.759,
+    "y": 46.723
+   },
+   "final": {
+    "x": 75.759,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_lipsRollU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 75.757,
+    "y": 40.374
+   },
+   "final": {
+    "x": 75.757,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_lipsRollD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 74.328,
+    "y": 46.723
+   },
+   "final": {
+    "x": 74.328,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_lipsRollU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 74.381,
+    "y": 40.374
+   },
+   "final": {
+    "x": 74.381,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|mouth_lipShiftD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 90.779,
+    "y": 32.701
+   },
+   "final": {
+    "x": 88.492,
+    "y": 32.701
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|mouth_lipShiftU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 90.779,
+    "y": 31.307
+   },
+   "final": {
+    "x": 88.492,
+    "y": 31.307
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_lipsTowardsTeethD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 64.276,
+    "y": 35.162
+   },
+   "final": {
+    "x": 63.539,
+    "y": 32.711
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipsTowardsTeethU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 64.276,
+    "y": 29.506
+   },
+   "final": {
+    "x": 63.565,
+    "y": 31.967
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipsTowardsTeethD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 62.339,
+    "y": 35.155
+   },
+   "final": {
+    "x": 63.071,
+    "y": 32.702
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipsTowardsTeethU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 62.339,
+    "y": 29.518
+   },
+   "final": {
+    "x": 63.071,
+    "y": 31.971
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|eye_eyelidD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 67.569,
+    "y": 21.361
+   },
+   "final": {
+    "x": 67.569,
+    "y": 22.848
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|eye_eyelidU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 67.569,
+    "y": 16.845
+   },
+   "final": {
+    "x": 67.569,
+    "y": 15.358
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|eyelashes_tweakerIn": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 73.597,
+    "y": 18.36
+   },
+   "final": {
+    "x": 73.704,
+    "y": 16.878
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|eyelashes_tweakerOut": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 72.103,
+    "y": 18.365
+   },
+   "final": {
+    "x": 71.997,
+    "y": 16.884
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_corner": {
+   "type": "2d",
+   "rest": {
+    "x": 86.548,
+    "y": 32.008
+   },
+   "corners": {
+    "minmin": {
+     "x": 87.524,
+     "y": 33.197
+    },
+    "maxmin": {
+     "x": 85.572,
+     "y": 33.197
+    },
+    "minmax": {
+     "x": 87.524,
+     "y": 30.818
+    },
+    "maxmax": {
+     "x": 85.572,
+     "y": 30.818
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "R|nose_nasolabialDeepen": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 75.122,
+    "y": 28.704
+   },
+   "final": {
+    "x": 73.597,
+    "y": 25.484
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_thicknessD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 68.223,
+    "y": 46.723
+   },
+   "final": {
+    "x": 68.223,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_thicknessU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 68.222,
+    "y": 40.374
+   },
+   "final": {
+    "x": 68.222,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_thicknessD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 66.792,
+    "y": 46.723
+   },
+   "final": {
+    "x": 66.792,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_thicknessU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 66.846,
+    "y": 40.374
+   },
+   "final": {
+    "x": 66.846,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_thicknessInwardD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 71.98,
+    "y": 46.723
+   },
+   "final": {
+    "x": 71.98,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_thicknessInwardU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 71.979,
+    "y": 40.374
+   },
+   "final": {
+    "x": 71.979,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_thicknessInwardD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 70.549,
+    "y": 46.723
+   },
+   "final": {
+    "x": 70.549,
+    "y": 49.501
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_thicknessInwardU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 70.602,
+    "y": 40.374
+   },
+   "final": {
+    "x": 70.602,
+    "y": 37.596
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|eye_faceScrunch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 85.966,
+    "y": 14.004
+   },
+   "final": {
+    "x": 85.966,
+    "y": 17.721
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|eye_faceScrunch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 70.32,
+    "y": 14.004
+   },
+   "final": {
+    "x": 70.32,
+    "y": 17.721
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|jaw": {
+   "type": "2d",
+   "rest": {
+    "x": 27.967,
+    "y": 72.119
+   },
+   "corners": {
+    "minmin": {
+     "x": 31.016,
+     "y": 72.119
+    },
+    "maxmin": {
+     "x": 24.918,
+     "y": 72.119
+    },
+    "minmax": {
+     "x": 31.016,
+     "y": 79.553
+    },
+    "maxmax": {
+     "x": 24.918,
+     "y": 79.553
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": 0.0,
+   "maxY": 1.0
+  },
+  "C|jaw_fwdBack": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 34.117,
+    "y": 75.841
+   },
+   "final": {
+    "x": 34.117,
+    "y": 79.558
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|jaw_openExtreme": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 24.963,
+    "y": 81.394
+   },
+   "final": {
+    "x": 31.061,
+    "y": 81.394
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|jaw_clench": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 32.085,
+    "y": 75.863
+   },
+   "final": {
+    "x": 32.085,
+    "y": 72.134
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|jaw_clench": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 23.849,
+    "y": 75.863
+   },
+   "final": {
+    "x": 23.849,
+    "y": 72.134
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipBiteD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 6.49,
+    "y": 90.335
+   },
+   "final": {
+    "x": 6.49,
+    "y": 86.607
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipBiteU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 6.489,
+    "y": 82.256
+   },
+   "final": {
+    "x": 6.489,
+    "y": 85.984
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipBiteD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 4.905,
+    "y": 90.326
+   },
+   "final": {
+    "x": 4.905,
+    "y": 86.598
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipBiteU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 4.905,
+    "y": 82.274
+   },
+   "final": {
+    "x": 4.905,
+    "y": 86.002
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipsBlow": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 45.172,
+    "y": 60.243
+   },
+   "final": {
+    "x": 47.514,
+    "y": 62.64
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipsBlow": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 43.972,
+    "y": 60.243
+   },
+   "final": {
+    "x": 41.63,
+    "y": 62.64
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipsPressD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 12.99,
+    "y": 90.335
+   },
+   "final": {
+    "x": 11.938,
+    "y": 86.835
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipsPressU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 12.99,
+    "y": 82.256
+   },
+   "final": {
+    "x": 11.975,
+    "y": 85.773
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipsPressD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 10.223,
+    "y": 90.326
+   },
+   "final": {
+    "x": 11.269,
+    "y": 86.823
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipsPressU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 10.223,
+    "y": 82.274
+   },
+   "final": {
+    "x": 11.269,
+    "y": 85.777
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipsTogetherD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 42.339,
+    "y": 78.24
+   },
+   "final": {
+    "x": 41.287,
+    "y": 74.74
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipsTogetherU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 42.339,
+    "y": 70.161
+   },
+   "final": {
+    "x": 41.323,
+    "y": 73.678
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipsTogetherD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 39.572,
+    "y": 78.231
+   },
+   "final": {
+    "x": 40.618,
+    "y": 74.727
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipsTogetherU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 39.572,
+    "y": 70.178
+   },
+   "final": {
+    "x": 40.618,
+    "y": 73.682
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_pressD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 49.599,
+    "y": 78.24
+   },
+   "final": {
+    "x": 48.546,
+    "y": 74.74
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_pressU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 49.599,
+    "y": 70.161
+   },
+   "final": {
+    "x": 48.583,
+    "y": 73.678
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_pressD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 46.832,
+    "y": 78.231
+   },
+   "final": {
+    "x": 47.878,
+    "y": 74.727
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_pressU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 46.832,
+    "y": 70.179
+   },
+   "final": {
+    "x": 47.878,
+    "y": 73.682
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_tightenD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 18.762,
+    "y": 90.328
+   },
+   "final": {
+    "x": 17.71,
+    "y": 86.828
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_tightenU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 18.762,
+    "y": 82.249
+   },
+   "final": {
+    "x": 17.747,
+    "y": 85.766
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_tightenD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 15.995,
+    "y": 90.319
+   },
+   "final": {
+    "x": 17.042,
+    "y": 86.815
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_tightenU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 15.995,
+    "y": 82.266
+   },
+   "final": {
+    "x": 17.041,
+    "y": 85.77
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_funnelD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 20.056,
+    "y": 72.727
+   },
+   "final": {
+    "x": 18.398,
+    "y": 70.706
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_funnelU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 20.053,
+    "y": 67.967
+   },
+   "final": {
+    "x": 18.395,
+    "y": 69.988
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_funnelD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 16.138,
+    "y": 72.734
+   },
+   "final": {
+    "x": 17.796,
+    "y": 70.714
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_funnelU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 16.144,
+    "y": 67.955
+   },
+   "final": {
+    "x": 17.801,
+    "y": 69.976
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_purseD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 14.147,
+    "y": 72.729
+   },
+   "final": {
+    "x": 12.488,
+    "y": 70.707
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_purseU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 14.144,
+    "y": 67.966
+   },
+   "final": {
+    "x": 12.485,
+    "y": 69.988
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_purseD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 10.227,
+    "y": 72.736
+   },
+   "final": {
+    "x": 11.885,
+    "y": 70.714
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_purseU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 10.232,
+    "y": 67.953
+   },
+   "final": {
+    "x": 11.891,
+    "y": 69.975
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_towardsD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 8.102,
+    "y": 72.729
+   },
+   "final": {
+    "x": 6.443,
+    "y": 70.707
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_towardsU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 8.099,
+    "y": 67.966
+   },
+   "final": {
+    "x": 6.441,
+    "y": 69.988
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_towardsD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 4.182,
+    "y": 72.736
+   },
+   "final": {
+    "x": 5.84,
+    "y": 70.714
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_towardsU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 4.188,
+    "y": 67.953
+   },
+   "final": {
+    "x": 5.846,
+    "y": 69.975
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|mouth": {
+   "type": "2d",
+   "rest": {
+    "x": 27.967,
+    "y": 47.531
+   },
+   "corners": {
+    "minmin": {
+     "x": 26.033,
+     "y": 49.888
+    },
+    "maxmin": {
+     "x": 29.901,
+     "y": 49.888
+    },
+    "minmax": {
+     "x": 26.033,
+     "y": 45.173
+    },
+    "maxmax": {
+     "x": 29.901,
+     "y": 45.173
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "L|mouth_cornerDepress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 34.416,
+    "y": 48.789
+   },
+   "final": {
+    "x": 38.254,
+    "y": 54.567
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_cornerPull": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 34.401,
+    "y": 45.613
+   },
+   "final": {
+    "x": 38.402,
+    "y": 40.001
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_dimple": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 35.83,
+    "y": 47.172
+   },
+   "final": {
+    "x": 41.853,
+    "y": 46.009
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lowerLipDepress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 29.887,
+    "y": 52.092
+   },
+   "final": {
+    "x": 30.812,
+    "y": 59.44
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_sharpCornerPull": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 32.077,
+    "y": 44.288
+   },
+   "final": {
+    "x": 33.758,
+    "y": 37.142
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_stretch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 31.981,
+    "y": 50.492
+   },
+   "final": {
+    "x": 37.194,
+    "y": 54.35
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_stretchLipsClose": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 29.11,
+    "y": 37.379
+   },
+   "final": {
+    "x": 28.898,
+    "y": 40.341
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_suckBlow": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 47.786,
+    "y": 43.353
+   },
+   "final": {
+    "x": 44.636,
+    "y": 43.353
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "L|mouth_upperLipRaise": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 29.698,
+    "y": 43.108
+   },
+   "final": {
+    "x": 32.081,
+    "y": 36.265
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_cornerDepress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 21.574,
+    "y": 48.789
+   },
+   "final": {
+    "x": 17.736,
+    "y": 54.567
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_cornerPull": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 21.559,
+    "y": 45.612
+   },
+   "final": {
+    "x": 17.559,
+    "y": 40.001
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_dimple": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 20.143,
+    "y": 47.172
+   },
+   "final": {
+    "x": 14.12,
+    "y": 46.009
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lowerLipDepress": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 26.091,
+    "y": 52.092
+   },
+   "final": {
+    "x": 25.167,
+    "y": 59.44
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_sharpCornerPull": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 23.888,
+    "y": 44.288
+   },
+   "final": {
+    "x": 22.208,
+    "y": 37.142
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_stretch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 24.016,
+    "y": 50.492
+   },
+   "final": {
+    "x": 18.804,
+    "y": 54.35
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_stretchLipsClose": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 26.824,
+    "y": 37.379
+   },
+   "final": {
+    "x": 27.036,
+    "y": 40.341
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_suckBlow": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 8.147,
+    "y": 43.353
+   },
+   "final": {
+    "x": 11.298,
+    "y": 43.353
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|mouth_upperLipRaise": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 26.28,
+    "y": 43.108
+   },
+   "final": {
+    "x": 23.898,
+    "y": 36.265
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|mouth_stickyD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 9.26,
+    "y": 61.965
+   },
+   "final": {
+    "x": 9.26,
+    "y": 58.992
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|mouth_stickyU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 9.26,
+    "y": 54.531
+   },
+   "final": {
+    "x": 9.26,
+    "y": 57.504
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_lipSticky": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 14.284,
+    "y": 58.183
+   },
+   "final": {
+    "x": 11.845,
+    "y": 58.183
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_stickyInnerD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 11.174,
+    "y": 61.965
+   },
+   "final": {
+    "x": 11.174,
+    "y": 58.992
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_stickyInnerU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 11.174,
+    "y": 54.531
+   },
+   "final": {
+    "x": 11.174,
+    "y": 57.504
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_stickyOuterD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 13.5,
+    "y": 61.965
+   },
+   "final": {
+    "x": 13.5,
+    "y": 58.992
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|mouth_stickyOuterU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 13.5,
+    "y": 54.531
+   },
+   "final": {
+    "x": 13.5,
+    "y": 57.504
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_lipSticky": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 4.0,
+    "y": 58.183
+   },
+   "final": {
+    "x": 6.439,
+    "y": 58.183
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_stickyInnerD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 7.085,
+    "y": 61.965
+   },
+   "final": {
+    "x": 7.085,
+    "y": 58.992
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_stickyInnerU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 7.085,
+    "y": 54.531
+   },
+   "final": {
+    "x": 7.085,
+    "y": 57.504
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_stickyOuterD": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 4.902,
+    "y": 61.965
+   },
+   "final": {
+    "x": 4.902,
+    "y": 58.992
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|mouth_stickyOuterU": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 4.902,
+    "y": 54.531
+   },
+   "final": {
+    "x": 4.902,
+    "y": 57.504
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|neck_swallow": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 24.934,
+    "y": 96.0
+   },
+   "final": {
+    "x": 31.032,
+    "y": 96.0
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|neck_mastoidContract": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 33.512,
+    "y": 88.201
+   },
+   "final": {
+    "x": 34.9,
+    "y": 91.511
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|neck_stretch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 31.815,
+    "y": 86.843
+   },
+   "final": {
+    "x": 32.874,
+    "y": 94.164
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "|neck_digastricUpDown": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 27.967,
+    "y": 90.651
+   },
+   "final": {
+    "x": 27.967,
+    "y": 94.492
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "|neck_throatExhaleInhale": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 26.302,
+    "y": 90.651
+   },
+   "final": {
+    "x": 26.302,
+    "y": 94.492
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "|neck_throatUpDown": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 29.631,
+    "y": 90.651
+   },
+   "final": {
+    "x": 29.631,
+    "y": 94.492
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "R|neck_mastoidContract": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 22.422,
+    "y": 88.201
+   },
+   "final": {
+    "x": 21.034,
+    "y": 91.511
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|neck_stretch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 24.119,
+    "y": 86.843
+   },
+   "final": {
+    "x": 23.06,
+    "y": 94.164
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "L|nose": {
+   "type": "2d",
+   "rest": {
+    "x": 30.046,
+    "y": 33.507
+   },
+   "corners": {
+    "minmin": {
+     "x": 28.124,
+     "y": 35.85
+    },
+    "maxmin": {
+     "x": 31.968,
+     "y": 35.85
+    },
+    "minmax": {
+     "x": 28.124,
+     "y": 31.164
+    },
+    "maxmax": {
+     "x": 31.968,
+     "y": 31.164
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "L|nose_wrinkleUpper": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 32.067,
+    "y": 21.882
+   },
+   "final": {
+    "x": 32.067,
+    "y": 24.856
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "R|nose": {
+   "type": "2d",
+   "rest": {
+    "x": 25.903,
+    "y": 33.507
+   },
+   "corners": {
+    "minmin": {
+     "x": 27.825,
+     "y": 35.85
+    },
+    "maxmin": {
+     "x": 23.981,
+     "y": 35.85
+    },
+    "minmax": {
+     "x": 27.825,
+     "y": 31.164
+    },
+    "maxmax": {
+     "x": 23.981,
+     "y": 31.164
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "R|nose_wrinkleUpper": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 23.897,
+    "y": 21.882
+   },
+   "final": {
+    "x": 23.897,
+    "y": 24.856
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "|lookAtSwitch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 41.428,
+    "y": 92.01
+   },
+   "final": {
+    "x": 47.526,
+    "y": 92.01
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "|rigLogicSwitch": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 41.428,
+    "y": 88.851
+   },
+   "final": {
+    "x": 47.526,
+    "y": 88.851
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|tongue_move": {
+   "type": "2d",
+   "rest": {
+    "x": 44.033,
+    "y": 53.483
+   },
+   "corners": {
+    "minmin": {
+     "x": 42.926,
+     "y": 54.833
+    },
+    "maxmin": {
+     "x": 45.141,
+     "y": 54.833
+    },
+    "minmax": {
+     "x": 42.926,
+     "y": 52.133
+    },
+    "maxmax": {
+     "x": 45.141,
+     "y": 52.133
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "C|tongue_inOut": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 42.55,
+    "y": 53.398
+   },
+   "final": {
+    "x": 42.55,
+    "y": 54.969
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|tongue_wideNarrow": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 45.611,
+    "y": 51.542
+   },
+   "final": {
+    "x": 44.479,
+    "y": 51.542
+   },
+   "min": -1.0,
+   "max": 1.0,
+   "finalValue": -1.0
+  },
+  "C|tongue_press": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 45.615,
+    "y": 53.937
+   },
+   "final": {
+    "x": 45.615,
+    "y": 52.074
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|tongue_bendTwist": {
+   "type": "2d",
+   "rest": {
+    "x": 47.205,
+    "y": 53.513
+   },
+   "corners": {
+    "minmin": {
+     "x": 46.098,
+     "y": 54.863
+    },
+    "maxmin": {
+     "x": 48.313,
+     "y": 54.863
+    },
+    "minmax": {
+     "x": 46.098,
+     "y": 52.163
+    },
+    "maxmax": {
+     "x": 48.313,
+     "y": 52.163
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "C|tongue_roll": {
+   "type": "1d",
+   "axis": "y",
+   "rest": {
+    "x": 48.691,
+    "y": 53.937
+   },
+   "final": {
+    "x": 48.691,
+    "y": 52.074
+   },
+   "min": 0.0,
+   "max": 1.0,
+   "finalValue": 1.0
+  },
+  "C|tongue_tipMove": {
+   "type": "2d",
+   "rest": {
+    "x": 50.152,
+    "y": 53.513
+   },
+   "corners": {
+    "minmin": {
+     "x": 49.045,
+     "y": 54.863
+    },
+    "maxmin": {
+     "x": 51.259,
+     "y": 54.863
+    },
+    "minmax": {
+     "x": 49.045,
+     "y": 52.163
+    },
+    "maxmax": {
+     "x": 51.259,
+     "y": 52.163
+    }
+   },
+   "minX": -1.0,
+   "maxX": 1.0,
+   "minY": -1.0,
+   "maxY": 1.0
+  },
+  "|convergenceSwitch": {
+   "type": "1d",
+   "axis": "x",
+   "rest": {
+    "x": 1.0,
+    "y": 50.0
+   },
+   "final": {
+    "x": 3.0,
+    "y": 50.0
+   },
+   "min": 0.0,
+   "max": 0.019999999552965164,
+   "finalValue": 1.0
+  }
+ },
+ "labels": [
+  {
+   "text": "eyes aim follow head",
+   "x": 82.004,
+   "y": 71.016
+  },
+  {
+   "text": "face GU ifollow head",
+   "x": 82.004,
+   "y": 71.016
+  },
+  {
+   "text": "corner sharpness",
+   "x": 79.0,
+   "y": 35.585
+  },
+  {
+   "text": "lips push pull",
+   "x": 86.261,
+   "y": 37.454
+  },
+  {
+   "text": "lips roll",
+   "x": 75.062,
+   "y": 35.85
+  },
+  {
+   "text": "lips shift",
+   "x": 90.779,
+   "y": 32.004
+  },
+  {
+   "text": "lips towards teeth",
+   "x": 64.127,
+   "y": 32.867
+  },
+  {
+   "text": "thickness",
+   "x": 69.461,
+   "y": 35.85
+  },
+  {
+   "text": "eyelashes",
+   "x": 129.172,
+   "y": 87.35
+  },
+  {
+   "text": "face scrunch",
+   "x": 129.172,
+   "y": 87.35
+  },
+  {
+   "text": "nasolabial",
+   "x": 129.172,
+   "y": 87.35
+  },
+  {
+   "text": "teeth",
+   "x": 70.045,
+   "y": 27.042
+  },
+  {
+   "text": "tweakers",
+   "x": 77.962,
+   "y": 55.417
+  },
+  {
+   "text": "tongue thick",
+   "x": 63.802,
+   "y": 42.306
+  },
+  {
+   "text": "lip bite",
+   "x": 5.481,
+   "y": 78.428
+  },
+  {
+   "text": "lips blow",
+   "x": 46.409,
+   "y": 59.555
+  },
+  {
+   "text": "lips press",
+   "x": 11.246,
+   "y": 78.466
+  },
+  {
+   "text": "lips together",
+   "x": 42.154,
+   "y": 67.09
+  },
+  {
+   "text": "mouth press",
+   "x": 46.113,
+   "y": 74.963
+  },
+  {
+   "text": "mouth suck",
+   "x": 44.959,
+   "y": 80.705
+  },
+  {
+   "text": "mouth tighten",
+   "x": 16.693,
+   "y": 78.276
+  },
+  {
+   "text": "funnel",
+   "x": 18.118,
+   "y": 66.981
+  },
+  {
+   "text": "purse",
+   "x": 8.979,
+   "y": 64.373
+  },
+  {
+   "text": "towards",
+   "x": 3.538,
+   "y": 63.272
+  },
+  {
+   "text": "OH",
+   "x": 12.117,
+   "y": 75.798
+  },
+  {
+   "text": "neck stretch",
+   "x": 27.967,
+   "y": 84.597
+  },
+  {
+   "text": "switches",
+   "x": 41.967,
+   "y": 90.568
+  },
+  {
+   "text": "tongue",
+   "x": 46.631,
+   "y": 56.643
+  },
+  {
+   "text": "convergence",
+   "x": -52.049,
+   "y": 16.355
+  },
+  {
+   "text": "eyelids",
+   "x": 88,
+   "y": 9
+  },
+  {
+   "text": "mouth sticky",
+   "x": 12,
+   "y": 54
+  },
+  {
+   "text": "convergence",
+   "x": 1,
+   "y": 46
+  }
+ ]
+}

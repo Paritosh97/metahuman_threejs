@@ -325,8 +325,12 @@ function buildMaterial(meshName) {
 // where each Fac_i is the sum, over that group's regions, of
 // (region's live RigLogic scalar * region's baked mask sample). Regions
 // named "*_wm13_*" feed both Fac1 and Fac3 (shared between groups 1 and 3
-// in the original shader). Normal-map (wrinkle) blending is not implemented
-// -- only basecolor, which is the visually dominant half of this effect.
+// in the original shader). Normal-map (wrinkle) blending uses the exact
+// same MergeMaps formula and the exact same fac1/fac2/fac3 weights (verified
+// via the real node graph, Wine/Blender: the "WrM1"/"WM2"/"WM3" mask groups
+// feed a MergeMaps.004 instance for Normal exactly like CM1/2/3 do for Color),
+// just with Head_Normal_Animated_WM1/2/3.png as Map1/2/3 instead of the CM
+// basecolor maps.
 const WRINKLE_DIR = `${CHARACTER_DIR}/Masks/wrinkle_atlas`;
 const WRINKLE_ATLAS_COUNT = 10;
 const WRINKLE_CHANNELS = ['r', 'g', 'b', 'a'];
@@ -349,6 +353,13 @@ async function setupWrinkleBlend(rig, mesh) {
   const cm2 = loadMapTexture('Head_Basecolor_Animated_CM2.png', { srgb: true });
   const cm3 = loadMapTexture('Head_Basecolor_Animated_CM3.png', { srgb: true });
   if (!cm1 || !cm2 || !cm3) return; // manifest doesn't have the animated maps for this character
+
+  // Normal-map (wrinkle) counterparts of CM1/2/3 -- optional; older manifests
+  // may not have these, in which case only the color blend runs.
+  const wm1 = loadMapTexture('Head_Normal_Animated_WM1.png');
+  const wm2 = loadMapTexture('Head_Normal_Animated_WM2.png');
+  const wm3 = loadMapTexture('Head_Normal_Animated_WM3.png');
+  const hasWM = !!(wm1 && wm2 && wm3 && material.normalMap);
 
   const atlasTextures = [];
   for (let i = 0; i < WRINKLE_ATLAS_COUNT; i++) {
@@ -413,24 +424,78 @@ async function setupWrinkleBlend(rig, mesh) {
     shader.uniforms.uMaskWeights = { value: weights };
 
     const uniformDecls = Array.from({ length: WRINKLE_ATLAS_COUNT }, (_, i) => `uniform sampler2D uWrinkleAtlas${i};`).join('\n')
-      + `\nuniform sampler2D uCM1;\nuniform sampler2D uCM2;\nuniform sampler2D uCM3;\nuniform float uMaskWeights[${resolved.length}];\n`;
+      + `\nuniform sampler2D uCM1;\nuniform sampler2D uCM2;\nuniform sampler2D uCM3;\nuniform float uMaskWeights[${resolved.length}];\n`
+      + (hasWM ? `uniform sampler2D uWM1;\nuniform sampler2D uWM2;\nuniform sampler2D uWM3;\nvarying vec2 vWrinkleFacs;\n` : '');
     shader.fragmentShader = uniformDecls + shader.fragmentShader;
+
+    // fac1/fac2/fac3 are needed in BOTH map_fragment (color) and
+    // normal_fragment_maps (normal) chunks, which run at different points
+    // in the fragment shader -- compute them once up top via a small helper
+    // macro-like block inserted before both, so the expressions (built from
+    // the live per-region RigLogic weights) aren't duplicated/desynced.
+    const facBlock = `
+      float wrFac1 = clamp(${fac1Expr}, 0.0, 1.0);
+      float wrFac2 = clamp(${fac2Expr}, 0.0, 1.0);
+      float wrFac3 = clamp(${fac3Expr}, 0.0, 1.0);
+    `;
 
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
       {
-        float fac1 = clamp(${fac1Expr}, 0.0, 1.0);
-        float fac2 = clamp(${fac2Expr}, 0.0, 1.0);
-        float fac3 = clamp(${fac3Expr}, 0.0, 1.0);
+        ${facBlock}
         vec3 cm1c = texture2D(uCM1, vUv).rgb;
         vec3 cm2c = texture2D(uCM2, vUv).rgb;
         vec3 cm3c = texture2D(uCM3, vUv).rgb;
-        diffuseColor.rgb += fac1 * (cm1c - diffuseColor.rgb)
-                           + fac2 * (cm2c - diffuseColor.rgb)
-                           + fac3 * (cm3c - diffuseColor.rgb);
+        diffuseColor.rgb += wrFac1 * (cm1c - diffuseColor.rgb)
+                           + wrFac2 * (cm2c - diffuseColor.rgb)
+                           + wrFac3 * (cm3c - diffuseColor.rgb);
       }`
     );
+
+    if (hasWM) {
+      shader.uniforms.uWM1 = { value: wm1 };
+      shader.uniforms.uWM2 = { value: wm2 };
+      shader.uniforms.uWM3 = { value: wm3 };
+      // Same MergeMaps formula as color, applied to the raw (still encoded
+      // 0..1) normal map texture BEFORE the *2.0-1.0 tangent-space decode --
+      // matches the source shader graph, which blends the raw image colors
+      // prior to any vector decoding.
+      // Matches this Three.js version's real TANGENTSPACE_NORMALMAP branch
+      // of normal_fragment_maps (read directly from THREE.ShaderChunk at
+      // runtime, not assumed) -- only the mapN source changes, blending the
+      // raw encoded normal texture before the *2.0-1.0 decode, same as the
+      // color blend above and matching the source shader graph.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <normal_fragment_maps>',
+        `#ifdef OBJECTSPACE_NORMALMAP
+          normal = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;
+          #ifdef FLIP_SIDED
+            normal = - normal;
+          #endif
+          #ifdef DOUBLE_SIDED
+            normal = normal * faceDirection;
+          #endif
+          normal = normalize( normalMatrix * normal );
+        #elif defined( TANGENTSPACE_NORMALMAP )
+          ${facBlock}
+          vec3 baseN = texture2D( normalMap, vUv ).rgb;
+          vec3 wm1c = texture2D(uWM1, vUv).rgb;
+          vec3 wm2c = texture2D(uWM2, vUv).rgb;
+          vec3 wm3c = texture2D(uWM3, vUv).rgb;
+          baseN += wrFac1 * (wm1c - baseN) + wrFac2 * (wm2c - baseN) + wrFac3 * (wm3c - baseN);
+          vec3 mapN = baseN * 2.0 - 1.0;
+          mapN.xy *= normalScale;
+          #ifdef USE_TANGENT
+            normal = normalize( vTBN * mapN );
+          #else
+            normal = perturbNormal2Arb( - vViewPosition, normal, mapN, faceDirection );
+          #endif
+        #elif defined( USE_BUMPMAP )
+          normal = perturbNormalArb( - vViewPosition, normal, dHdxy_fwd(), faceDirection );
+        #endif`
+      );
+    }
   };
   material.needsUpdate = true;
 
@@ -854,6 +919,62 @@ function refreshViews(rig) {
   }
 }
 
+// ── Eye aim ──────────────────────────────────────────────────────────────
+// Ports rig_instance.py's get_head_gui_control_values_from_eye_aim exactly:
+// for each eye, build a "reference frame" from the eye's REST local
+// orientation composed onto its parent's CURRENT (posed) world matrix (so
+// the eyes keep aiming at a world-fixed target even as the head turns),
+// convert the world-space look vector into that reference frame, and derive
+// yaw/pitch normalized by the same 60deg/30deg max-rotation constants the
+// addon uses. Writes straight into guiBuf's L_eye/R_eye tx/ty slots.
+const _eyeAimM4 = new THREE.Matrix4();
+const _eyeAimM3 = new THREE.Matrix3();
+const _eyeAimRestLocal = new THREE.Matrix4();
+const _eyeAimEyePos = new THREE.Vector3();
+const _eyeAimLookDir = new THREE.Vector3();
+const _eyeAimLocalDir = new THREE.Vector3();
+function applyEyeAim(rig) {
+  const target = rig.eyeAimTarget;
+  if (!target || !target.visible) return;
+  const { guiBuf, neutralT, neutralQ } = rig;
+  const targetPos = target.getWorldPosition(new THREE.Vector3());
+
+  for (const [eyeBoneName, controlKey] of [['FACIAL_L_Eye', 'L|eye'], ['FACIAL_R_Eye', 'R|eye']]) {
+    const eye = rig.boneByName.get(eyeBoneName);
+    const idx = rig.eyeAimGuiIndices && rig.eyeAimGuiIndices.get(controlKey);
+    if (!eye || !idx) continue;
+
+    const j = eye.userData.jointIndex;
+    _eyeAimRestLocal.compose(
+      new THREE.Vector3(neutralT[j*3], neutralT[j*3+1], neutralT[j*3+2]),
+      neutralQ[j], new THREE.Vector3(1, 1, 1)
+    );
+    const parent = eye.parent;
+    if (parent) {
+      _eyeAimM4.multiplyMatrices(parent.matrixWorld, _eyeAimRestLocal);
+    } else {
+      _eyeAimM4.copy(_eyeAimRestLocal);
+    }
+    eye.getWorldPosition(_eyeAimEyePos);
+    _eyeAimLookDir.subVectors(targetPos, _eyeAimEyePos);
+    if (_eyeAimLookDir.lengthSq() < 1e-10) continue;
+    _eyeAimLookDir.normalize();
+
+    _eyeAimM3.setFromMatrix4(_eyeAimM4).invert();
+    _eyeAimLocalDir.copy(_eyeAimLookDir).applyMatrix3(_eyeAimM3).normalize();
+
+    const horizDist = Math.hypot(_eyeAimLocalDir.x, _eyeAimLocalDir.z);
+    const yaw = horizDist > 1e-7 ? Math.asin(Math.max(-1, Math.min(1, _eyeAimLocalDir.x / horizDist))) : 0;
+    const pitch = Math.atan2(_eyeAimLocalDir.y, horizDist);
+    const xMax = 60 * Math.PI / 180, yMax = 30 * Math.PI / 180;
+    const xControl = Math.max(-1, Math.min(1, yaw / xMax));
+    const yControl = Math.max(-1, Math.min(1, pitch / yMax));
+
+    if (idx.txIndex !== undefined) guiBuf[idx.txIndex] = Math.max(idx.txMin, Math.min(idx.txMax, xControl));
+    if (idx.tyIndex !== undefined) guiBuf[idx.tyIndex] = Math.max(idx.tyMin, Math.min(idx.tyMax, yControl));
+  }
+}
+
 function evaluate(rig) {
   const { handle, guiBuf, guiPtr, jntPtr, blendPtr, wrinklePtr,
           guiCount, floatCount, blendCount, wrinkleCount,
@@ -861,6 +982,7 @@ function evaluate(rig) {
           neutralT, neutralQ, applyJointSet } = rig;
 
   refreshViews(rig);
+  applyEyeAim(rig);
 
   // Order matters: rl_set_gui_controls's mapGUIToRawControls() zeroes the
   // entire GUI-mapped raw-control range, so driver-bone raw-control writes
@@ -1206,410 +1328,50 @@ buildPosingUI();
 //  control scheme (CTRL_L_brow_down.ty, CTRL_C_mouth.tx/.ty, etc.), matching
 //  Blender's face_board concept instead of a flat alphabetical slider list.
 // ════════════════════════════════════════════════════════════
-// FACEBOARD_POSITIONS holds the REAL, authored 2D control positions,
-// extracted from the LIVE character_dna addon's runtime face board (via
-// Wine + the real Windows Blender build + an actual head.dna import, not
-// just opening the static face_board.blend template) so parenting/
-// positioning exactly matches what ships. Each CTRL_<side>_<name> bone's
-// armature-space (X, Z) -- the board's real horizontal/vertical layout
-// plane, Y is depth -- was read directly with bpy and normalized from the
-// FULL set's bounding box into this 0..100 (x) / 0..100 (y) space, so the
-// panel's proportions match Blender's actual board layout precisely.
-// Regenerate (headless, no manual placement) if a different DNA/face-board
-// revision changes control names or layout.
-const FACEBOARD_POSITIONS = {
-  'C|eye': {x: 55.04, y: 18.20},
-  'C|eye_parallelLook': {x: 54.40, y: 13.80},
-  'C|jaw': {x: 55.04, y: 71.78},
-  'C|jaw_fwdBack': {x: 59.16, y: 76.18},
-  'C|jaw_openExtreme': {x: 53.02, y: 82.74},
-  'C|mouth': {x: 55.04, y: 42.73},
-  'C|mouth_lipShiftD': {x: 97.15, y: 25.20},
-  'C|mouth_lipShiftU': {x: 97.15, y: 23.56},
-  'C|mouth_stickyD': {x: 42.49, y: 59.78},
-  'C|mouth_stickyU': {x: 42.49, y: 51.00},
-  'C|neck_swallow': {x: 53.00, y: 100.00},
-  'C|teethD': {x: 83.16, y: 25.47},
-  'C|teethU': {x: 83.16, y: 21.06},
-  'C|teeth_fwdBackD': {x: 81.92, y: 25.48},
-  'C|teeth_fwdBackU': {x: 81.92, y: 21.07},
-  'C|tongue_bendTwist': {x: 67.94, y: 49.80},
-  'C|tongue_inOut': {x: 64.81, y: 49.66},
-  'C|tongue_move': {x: 65.81, y: 49.76},
-  'C|tongue_press': {x: 66.87, y: 50.30},
-  'C|tongue_roll': {x: 68.93, y: 50.30},
-  'C|tongue_thickThin': {x: 79.13, y: 35.34},
-  'C|tongue_tipMove': {x: 69.91, y: 49.80},
-  'C|tongue_wideNarrow': {x: 66.87, y: 47.47},
-  'L|brow_down': {x: 56.91, y: 3.42},
-  'L|brow_lateral': {x: 61.79, y: 5.50},
-  'L|brow_raiseIn': {x: 57.50, y: 0.00},
-  'L|brow_raiseOut': {x: 60.89, y: 1.35},
-  'L|ear_up': {x: 66.28, y: 27.98},
-  'L|eye': {x: 60.15, y: 18.20},
-  'L|eye_blink': {x: 62.53, y: 17.58},
-  'L|eye_cheekRaise': {x: 64.23, y: 23.90},
-  'L|eye_eyelidD': {x: 95.80, y: 11.81},
-  'L|eye_eyelidU': {x: 95.80, y: 6.46},
-  'L|eye_faceScrunch': {x: 93.93, y: 3.11},
-  'L|eye_lidPress': {x: 63.91, y: 13.87},
-  'L|eye_pupil': {x: 60.13, y: 14.07},
-  'L|eye_squintInner': {x: 60.28, y: 24.09},
-  'L|eyelashes_tweakerIn': {x: 91.76, y: 8.26},
-  'L|eyelashes_tweakerOut': {x: 92.76, y: 8.26},
-  'L|jaw_ChinRaiseD': {x: 55.51, y: 68.84},
-  'L|jaw_ChinRaiseU': {x: 55.51, y: 63.16},
-  'L|jaw_chinCompress': {x: 60.17, y: 60.99},
-  'L|jaw_clench': {x: 57.80, y: 76.21},
-  'L|mouth_corner': {x: 100.00, y: 24.39},
-  'L|mouth_cornerDepress': {x: 59.36, y: 44.22},
-  'L|mouth_cornerPull': {x: 59.35, y: 40.46},
-  'L|mouth_cornerSharpnessD': {x: 89.74, y: 41.77},
-  'L|mouth_cornerSharpnessU': {x: 89.75, y: 34.27},
-  'L|mouth_dimple': {x: 60.31, y: 42.30},
-  'L|mouth_funnelD': {x: 49.73, y: 72.50},
-  'L|mouth_funnelU': {x: 49.73, y: 66.88},
-  'L|mouth_lipBiteD': {x: 40.64, y: 93.31},
-  'L|mouth_lipBiteU': {x: 40.64, y: 83.76},
-  'L|mouth_lipSticky': {x: 45.86, y: 55.31},
-  'L|mouth_lipsBlow': {x: 66.57, y: 57.75},
-  'L|mouth_lipsPressD': {x: 44.99, y: 93.31},
-  'L|mouth_lipsPressU': {x: 44.99, y: 83.76},
-  'L|mouth_lipsRollD': {x: 87.08, y: 41.77},
-  'L|mouth_lipsRollU': {x: 87.08, y: 34.27},
-  'L|mouth_lipsTogetherD': {x: 64.67, y: 79.01},
-  'L|mouth_lipsTogetherU': {x: 64.67, y: 69.47},
-  'L|mouth_lipsTowardsTeethD': {x: 79.38, y: 28.11},
-  'L|mouth_lipsTowardsTeethU': {x: 79.38, y: 21.43},
-  'L|mouth_lowerLipDepress': {x: 56.32, y: 48.12},
-  'L|mouth_pressD': {x: 69.54, y: 79.01},
-  'L|mouth_pressU': {x: 69.54, y: 69.47},
-  'L|mouth_purseD': {x: 45.77, y: 72.50},
-  'L|mouth_purseU': {x: 45.77, y: 66.87},
-  'L|mouth_pushPullD': {x: 95.62, y: 40.90},
-  'L|mouth_pushPullU': {x: 95.55, y: 35.13},
-  'L|mouth_sharpCornerPull': {x: 57.79, y: 38.90},
-  'L|mouth_stickyInnerD': {x: 43.78, y: 59.78},
-  'L|mouth_stickyInnerU': {x: 43.78, y: 51.00},
-  'L|mouth_stickyOuterD': {x: 45.34, y: 59.78},
-  'L|mouth_stickyOuterU': {x: 45.34, y: 51.00},
-  'L|mouth_stretch': {x: 57.73, y: 46.23},
-  'L|mouth_stretchLipsClose': {x: 55.80, y: 30.73},
-  'L|mouth_suckBlow': {x: 68.33, y: 37.79},
-  'L|mouth_thicknessD': {x: 82.03, y: 41.77},
-  'L|mouth_thicknessInwardD': {x: 84.55, y: 41.77},
-  'L|mouth_thicknessInwardU': {x: 84.55, y: 34.27},
-  'L|mouth_thicknessU': {x: 82.03, y: 34.27},
-  'L|mouth_tightenD': {x: 48.87, y: 93.30},
-  'L|mouth_tightenU': {x: 48.87, y: 83.75},
-  'L|mouth_towardsD': {x: 41.72, y: 72.50},
-  'L|mouth_towardsU': {x: 41.72, y: 66.87},
-  'L|mouth_upperLipRaise': {x: 56.20, y: 37.50},
-  'L|neck_mastoidContract': {x: 58.75, y: 90.78},
-  'L|neck_stretch': {x: 57.62, y: 89.18},
-  'L|nose': {x: 56.43, y: 26.16},
-  'L|nose_nasolabialDeepen': {x: 90.74, y: 20.48},
-  'L|nose_wrinkleUpper': {x: 57.79, y: 12.42},
-  'R|brow_down': {x: 53.19, y: 3.43},
-  'R|brow_lateral': {x: 48.30, y: 5.50},
-  'R|brow_raiseIn': {x: 52.59, y: 0.00},
-  'R|brow_raiseOut': {x: 49.22, y: 1.35},
-  'R|ear_up': {x: 43.79, y: 27.98},
-  'R|eye': {x: 49.94, y: 18.16},
-  'R|eye_blink': {x: 47.54, y: 17.58},
-  'R|eye_cheekRaise': {x: 45.84, y: 23.92},
-  'R|eye_eyelidD': {x: 81.59, y: 11.81},
-  'R|eye_eyelidU': {x: 81.59, y: 6.47},
-  'R|eye_faceScrunch': {x: 83.44, y: 3.11},
-  'R|eye_lidPress': {x: 46.17, y: 13.88},
-  'R|eye_pupil': {x: 49.92, y: 14.05},
-  'R|eye_squintInner': {x: 49.80, y: 24.09},
-  'R|eyelashes_tweakerIn': {x: 85.63, y: 8.26},
-  'R|eyelashes_tweakerOut': {x: 84.63, y: 8.26},
-  'R|jaw_ChinRaiseD': {x: 54.45, y: 68.84},
-  'R|jaw_ChinRaiseU': {x: 54.45, y: 63.16},
-  'R|jaw_chinCompress': {x: 50.02, y: 60.99},
-  'R|jaw_clench': {x: 52.28, y: 76.21},
-  'R|mouth_corner': {x: 94.32, y: 24.39},
-  'R|mouth_cornerDepress': {x: 50.75, y: 44.22},
-  'R|mouth_cornerPull': {x: 50.74, y: 40.46},
-  'R|mouth_cornerSharpnessD': {x: 88.61, y: 41.77},
-  'R|mouth_cornerSharpnessU': {x: 88.60, y: 34.27},
-  'R|mouth_dimple': {x: 49.79, y: 42.30},
-  'R|mouth_funnelD': {x: 47.11, y: 72.51},
-  'R|mouth_funnelU': {x: 47.11, y: 66.86},
-  'R|mouth_lipBiteD': {x: 39.57, y: 93.30},
-  'R|mouth_lipBiteU': {x: 39.57, y: 83.78},
-  'R|mouth_lipSticky': {x: 38.97, y: 55.31},
-  'R|mouth_lipsBlow': {x: 65.77, y: 57.75},
-  'R|mouth_lipsPressD': {x: 43.14, y: 93.30},
-  'R|mouth_lipsPressU': {x: 43.14, y: 83.78},
-  'R|mouth_lipsRollD': {x: 86.12, y: 41.77},
-  'R|mouth_lipsRollU': {x: 86.16, y: 34.27},
-  'R|mouth_lipsTogetherD': {x: 62.82, y: 79.00},
-  'R|mouth_lipsTogetherU': {x: 62.82, y: 69.49},
-  'R|mouth_lipsTowardsTeethD': {x: 78.08, y: 28.10},
-  'R|mouth_lipsTowardsTeethU': {x: 78.08, y: 21.44},
-  'R|mouth_lowerLipDepress': {x: 53.78, y: 48.12},
-  'R|mouth_pressD': {x: 67.69, y: 79.00},
-  'R|mouth_pressU': {x: 67.69, y: 69.49},
-  'R|mouth_purseD': {x: 43.14, y: 72.51},
-  'R|mouth_purseU': {x: 43.15, y: 66.86},
-  'R|mouth_pushPullD': {x: 92.72, y: 40.83},
-  'R|mouth_pushPullU': {x: 92.72, y: 35.10},
-  'R|mouth_sharpCornerPull': {x: 52.30, y: 38.90},
-  'R|mouth_stickyInnerD': {x: 41.04, y: 59.78},
-  'R|mouth_stickyInnerU': {x: 41.04, y: 51.00},
-  'R|mouth_stickyOuterD': {x: 39.57, y: 59.78},
-  'R|mouth_stickyOuterU': {x: 39.57, y: 51.00},
-  'R|mouth_stretch': {x: 52.39, y: 46.23},
-  'R|mouth_stretchLipsClose': {x: 54.27, y: 30.73},
-  'R|mouth_suckBlow': {x: 41.75, y: 37.79},
-  'R|mouth_thicknessD': {x: 81.07, y: 41.77},
-  'R|mouth_thicknessInwardD': {x: 83.59, y: 41.77},
-  'R|mouth_thicknessInwardU': {x: 83.62, y: 34.27},
-  'R|mouth_thicknessU': {x: 81.11, y: 34.27},
-  'R|mouth_tightenD': {x: 47.01, y: 93.29},
-  'R|mouth_tightenU': {x: 47.01, y: 83.77},
-  'R|mouth_towardsD': {x: 39.09, y: 72.51},
-  'R|mouth_towardsU': {x: 39.09, y: 66.86},
-  'R|mouth_upperLipRaise': {x: 53.91, y: 37.50},
-  'R|neck_mastoidContract': {x: 51.32, y: 90.78},
-  'R|neck_stretch': {x: 52.46, y: 89.18},
-  'R|nose': {x: 53.65, y: 26.16},
-  'R|nose_nasolabialDeepen': {x: 86.66, y: 20.48},
-  'R|nose_wrinkleUpper': {x: 52.31, y: 12.42},
-  '|convergenceSwitch': {x: 0.00, y: 5.89},
-  '|eyesAimFollowHead': {x: 91.90, y: 87.51},
-  '|faceGUIfollowHead': {x: 91.90, y: 83.73},
-  '|lookAtSwitch': {x: 64.06, y: 95.29},
-  '|neck_digastricUpDown': {x: 55.04, y: 93.68},
-  '|neck_throatExhaleInhale': {x: 53.92, y: 93.68},
-  '|neck_throatUpDown': {x: 56.15, y: 93.68},
-  '|rigLogicSwitch': {x: 68.15, y: 91.51},
-};
+// All control positions/labels come from faceboard_layout.json, extracted
+// directly from the LIVE character_dna addon's runtime face board (via Wine
+// + the real Windows Blender build + an actual head.dna import): each
+// CTRL_<side>_<name> pose bone was posed to (0,0,0) ["rest"] and then to its
+// most extreme LIMIT_LOCATION value ["final"] (all 4 corners of the min/max
+// box, for 2D controls), and its evaluated world (X, Z) position -- the
+// board's real horizontal/vertical layout plane, Y is depth -- was read back
+// and normalized into 0..100 (x) / 0..100 (y) space. Since each bone's
+// location is constrained linearly, interpolating between "rest" and
+// "final" (or between the 4 corners, for 2D controls) exactly reproduces
+// the real board -- no guessed offsets or hand-tuned zones. Edit the JSON
+// directly to tweak layout, or regenerate it (see wine_extract_true_extents.py
+// referenced in project notes) if a different DNA/face-board revision
+// changes control names.
+const FACEBOARD_LAYOUT = await fetch('faceboard_layout.json').then(r => r.json());
 
-// FACEBOARD_AXES holds the REAL per-control drag direction for single-axis
-// (1D) controls, extracted from the actual runtime face board -- not the
-// bone's own Limit Location rest orientation (which is deceptively always
-// axis-aligned: X locked to 0, Y free 0..1, or vice versa) but the visual
-// "track" mesh (FRM_<name>) that Blender actually snaps the control along.
-// Confirmed by direct testing: e.g. L_mouth_cornerDepress is constrained to
-// pure local-Y in bone-rest terms, yet the FRM_ track mesh backing it is
-// rotated ~141fdeg, and dragging it in Blender genuinely only moves along
-// that diagonal (southeast for this one) -- not vertically. Extracted via
-// the real character_dna addon (Wine + Windows Blender, actual DNA import,
-// not just opening the static .blend) so parenting/positioning matches
-// what ships. `axis` says which GUI axis (tx/ty) this single scalar drives;
-// `dir` is the unit direction in this board's (x%, y%) space to project
-// mouse drag onto. Two-axis (free 2D) controls are not listed here -- they
-// keep the default independent horizontal-tx/vertical-ty behavior, which
-// matches their "X" box widgets in Blender.
-const FACEBOARD_AXES = {
-  'C|eye_parallelLook': {axis: 'y', dir: [1.0, -0.0]},
-  'C|jaw_openExtreme': {axis: 'y', dir: [1.0, -0.0]},
-  'C|mouth_lipShiftD': {axis: 'y', dir: [1.0, -0.0]},
-  'C|mouth_lipShiftU': {axis: 'y', dir: [1.0, -0.0]},
-  'C|neck_swallow': {axis: 'y', dir: [1.0, -0.0]},
-  'L|brow_down': {axis: 'y', dir: [-0.2227, 0.9749]},
-  'L|brow_lateral': {axis: 'y', dir: [-0.9561, 0.293]},
-  'L|brow_raiseIn': {axis: 'y', dir: [0.1108, -0.9938]},
-  'L|brow_raiseOut': {axis: 'y', dir: [0.2656, -0.9641]},
-  'L|ear_up': {axis: 'y', dir: [0.1432, -0.9897]},
-  'L|eye_blink': {axis: 'y', dir: [-0.143, 0.9897]},
-  'L|eye_lidPress': {axis: 'y', dir: [-0.1434, 0.9897]},
-  'L|eye_pupil': {axis: 'y', dir: [1.0, -0.0]},
-  'L|eye_squintInner': {axis: 'y', dir: [-0.8181, -0.5751]},
-  'L|eyelashes_tweakerIn': {axis: 'y', dir: [0.072, 0.9974]},
-  'L|eyelashes_tweakerOut': {axis: 'y', dir: [-0.072, 0.9974]},
-  'L|jaw_chinCompress': {axis: 'y', dir: [-0.4279, -0.9038]},
-  'L|mouth_cornerDepress': {axis: 'y', dir: [0.5539, 0.8326]},
-  'L|mouth_cornerPull': {axis: 'y', dir: [0.5811, -0.8138]},
-  'L|mouth_dimple': {axis: 'y', dir: [0.9819, -0.1895]},
-  'L|mouth_funnelD': {axis: 'y', dir: [-0.6347, -0.7728]},
-  'L|mouth_funnelU': {axis: 'y', dir: [-0.6347, 0.7728]},
-  'L|mouth_lipSticky': {axis: 'y', dir: [-1.0, -0.0]},
-  'L|mouth_lipsBlow': {axis: 'y', dir: [0.6991, 0.715]},
-  'L|mouth_lipsPressD': {axis: 'y', dir: [-0.288, -0.9576]},
-  'L|mouth_lipsPressU': {axis: 'y', dir: [-0.2777, 0.9607]},
-  'L|mouth_lipsTogetherD': {axis: 'y', dir: [-0.288, -0.9576]},
-  'L|mouth_lipsTogetherU': {axis: 'y', dir: [-0.2777, 0.9607]},
-  'L|mouth_lipsTowardsTeethD': {axis: 'y', dir: [-0.2887, -0.9574]},
-  'L|mouth_lipsTowardsTeethU': {axis: 'y', dir: [-0.2777, 0.9607]},
-  'L|mouth_lowerLipDepress': {axis: 'y', dir: [0.1249, 0.9922]},
-  'L|mouth_pressD': {axis: 'y', dir: [-0.288, -0.9576]},
-  'L|mouth_pressU': {axis: 'y', dir: [-0.2777, 0.9607]},
-  'L|mouth_purseD': {axis: 'y', dir: [-0.6347, -0.7728]},
-  'L|mouth_purseU': {axis: 'y', dir: [-0.6347, 0.7728]},
-  'L|mouth_pushPullD': {axis: 'y', dir: [0.6347, 0.7728]},
-  'L|mouth_pushPullU': {axis: 'y', dir: [0.6347, -0.7728]},
-  'L|mouth_sharpCornerPull': {axis: 'y', dir: [0.2291, -0.9734]},
-  'L|mouth_stretch': {axis: 'y', dir: [0.8042, 0.5944]},
-  'L|mouth_stretchLipsClose': {axis: 'y', dir: [-0.0719, 0.9974]},
-  'L|mouth_suckBlow': {axis: 'y', dir: [1.0, -0.0]},
-  'L|mouth_tightenD': {axis: 'y', dir: [-0.288, -0.9576]},
-  'L|mouth_tightenU': {axis: 'y', dir: [-0.2777, 0.9607]},
-  'L|mouth_towardsD': {axis: 'y', dir: [-0.6347, -0.7728]},
-  'L|mouth_towardsU': {axis: 'y', dir: [-0.6347, 0.7728]},
-  'L|mouth_upperLipRaise': {axis: 'y', dir: [0.329, -0.9443]},
-  'L|neck_mastoidContract': {axis: 'y', dir: [0.3871, 0.922]},
-  'L|neck_stretch': {axis: 'y', dir: [0.1432, 0.9897]},
-  'L|nose_nasolabialDeepen': {axis: 'y', dir: [0.4284, -0.9036]},
-  'R|brow_down': {axis: 'y', dir: [0.2155, 0.9765]},
-  'R|brow_lateral': {axis: 'y', dir: [0.9567, 0.2912]},
-  'R|brow_raiseIn': {axis: 'y', dir: [-0.1079, -0.9942]},
-  'R|brow_raiseOut': {axis: 'y', dir: [-0.2656, -0.9641]},
-  'R|ear_up': {axis: 'y', dir: [-0.1432, -0.9897]},
-  'R|eye_blink': {axis: 'y', dir: [0.143, 0.9897]},
-  'R|eye_lidPress': {axis: 'y', dir: [0.1434, 0.9897]},
-  'R|eye_pupil': {axis: 'y', dir: [-1.0, -0.0]},
-  'R|eye_squintInner': {axis: 'y', dir: [0.8181, -0.5751]},
-  'R|eyelashes_tweakerIn': {axis: 'y', dir: [-0.072, 0.9974]},
-  'R|eyelashes_tweakerOut': {axis: 'y', dir: [0.072, 0.9974]},
-  'R|jaw_chinCompress': {axis: 'y', dir: [0.4279, -0.9038]},
-  'R|mouth_cornerDepress': {axis: 'y', dir: [-0.5539, 0.8326]},
-  'R|mouth_cornerPull': {axis: 'y', dir: [-0.5811, -0.8138]},
-  'R|mouth_dimple': {axis: 'y', dir: [-0.9819, -0.1895]},
-  'R|mouth_funnelD': {axis: 'y', dir: [0.6347, -0.7728]},
-  'R|mouth_funnelU': {axis: 'y', dir: [0.6347, 0.7728]},
-  'R|mouth_lipSticky': {axis: 'y', dir: [1.0, -0.0]},
-  'R|mouth_lipsBlow': {axis: 'y', dir: [-0.6991, 0.715]},
-  'R|mouth_lipsPressD': {axis: 'y', dir: [0.2865, -0.9581]},
-  'R|mouth_lipsPressU': {axis: 'y', dir: [0.2865, 0.9581]},
-  'R|mouth_lipsTogetherD': {axis: 'y', dir: [0.2865, -0.9581]},
-  'R|mouth_lipsTogetherU': {axis: 'y', dir: [0.2865, 0.9581]},
-  'R|mouth_lipsTowardsTeethD': {axis: 'y', dir: [0.2861, -0.9582]},
-  'R|mouth_lipsTowardsTeethU': {axis: 'y', dir: [0.2861, 0.9582]},
-  'R|mouth_lowerLipDepress': {axis: 'y', dir: [-0.1249, 0.9922]},
-  'R|mouth_pressD': {axis: 'y', dir: [0.2865, -0.9581]},
-  'R|mouth_pressU': {axis: 'y', dir: [0.2865, 0.9581]},
-  'R|mouth_purseD': {axis: 'y', dir: [0.6347, -0.7728]},
-  'R|mouth_purseU': {axis: 'y', dir: [0.6347, 0.7728]},
-  'R|mouth_pushPullD': {axis: 'y', dir: [-0.6347, 0.7728]},
-  'R|mouth_pushPullU': {axis: 'y', dir: [-0.6347, -0.7728]},
-  'R|mouth_sharpCornerPull': {axis: 'y', dir: [-0.2291, -0.9734]},
-  'R|mouth_stretch': {axis: 'y', dir: [-0.8042, 0.5944]},
-  'R|mouth_stretchLipsClose': {axis: 'y', dir: [0.0719, 0.9974]},
-  'R|mouth_suckBlow': {axis: 'y', dir: [-1.0, -0.0]},
-  'R|mouth_tightenD': {axis: 'y', dir: [0.2865, -0.9581]},
-  'R|mouth_tightenU': {axis: 'y', dir: [0.2865, 0.9581]},
-  'R|mouth_towardsD': {axis: 'y', dir: [0.6347, -0.7728]},
-  'R|mouth_towardsU': {axis: 'y', dir: [0.6347, 0.7728]},
-  'R|mouth_upperLipRaise': {axis: 'y', dir: [-0.329, -0.9443]},
-  'R|neck_mastoidContract': {axis: 'y', dir: [-0.3871, 0.922]},
-  'R|neck_stretch': {axis: 'y', dir: [-0.1432, 0.9897]},
-  'R|nose_nasolabialDeepen': {axis: 'y', dir: [-0.4284, -0.9036]},
-  '|convergenceSwitch': {axis: 'x', dir: [1.0, 0.0]},
-  '|eyesAimFollowHead': {axis: 'y', dir: [1.0, -0.0]},
-  '|faceGUIfollowHead': {axis: 'y', dir: [1.0, -0.0]},
-  '|lookAtSwitch': {axis: 'y', dir: [1.0, -0.0]},
-  '|rigLogicSwitch': {axis: 'y', dir: [1.0, -0.0]},
-};
-
-// FACEBOARD_LABELS holds the REAL group-label captions from the Blender face
-// board, extracted from face_board.blend's "text" bone collection (bones
-// named TEXT_<label>, e.g. TEXT_mouthSticky at a specific board position --
-// these are exactly the bold captions visible in Blender's board, like
-// "mouth sticky" / "tweakers" / "OH" / "switches"). Positions normalized
-// into the same 0..100 space as FACEBOARD_POSITIONS; a few (eyelids,
-// mouthSticky) sit in a differently-parented sub-panel in the source file
-// whose raw coordinates don't land in the main board space, so those two
-// are manually anchored near their matching control cluster instead of
-// using the (out-of-space) raw extraction.
-const FACEBOARD_LABELS = [
-  { text: 'eyes aim follow head', x: 91.9, y: 84.11 },
-  { text: 'face GUI follow head', x: 91.9, y: 83.73 },
-  { text: 'corner sharpness', x: 88.6, y: 42.25 },
-  { text: 'lips push pull', x: 94.5, y: 44.45 },
-  { text: 'lips roll', x: 86.6, y: 42.56 },
-  { text: 'lips shift', x: 97.15, y: 38.01 },
-  { text: 'lips towards teeth', x: 78.7, y: 39.03 },
-  { text: 'thickness', x: 83.2, y: 42.56 },
-  { text: 'eyelashes', x: 90, y: 12 },
-  { text: 'eyelids', x: 88, y: 9 },
-  { text: 'face scrunch', x: 93, y: 3 },
-  { text: 'nasolabial', x: 90.7, y: 20.5 },
-  { text: 'teeth', x: 83.2, y: 32.15 },
-  { text: 'tweakers', x: 87.5, y: 65.68 },
-  { text: 'tongue thick', x: 79.1, y: 50.19 },
-  { text: 'lip bite', x: 40.6, y: 92.87 },
-  { text: 'lips blow', x: 66.6, y: 70.57 },
-  { text: 'lips press', x: 45, y: 92.91 },
-  { text: 'lips together', x: 64.7, y: 79.47 },
-  { text: 'mouth press', x: 69.5, y: 88.77 },
-  { text: 'mouth suck', x: 68.3, y: 95.56 },
-  { text: 'mouth tighten', x: 48.9, y: 92.69 },
-  { text: 'funnel', x: 49.7, y: 79.34 },
-  { text: 'purse', x: 45.8, y: 76.26 },
-  { text: 'towards', x: 41.7, y: 74.96 },
-  { text: 'OH', x: 45.9, y: 89.76 },
-  { text: 'mouth sticky', x: 42.5, y: 55.31 },
-  { text: 'neck stretch', x: 57.6, y: 100.16 },
-  { text: 'switches', x: 64.1, y: 91.51 },
-  { text: 'tongue', x: 65.8, y: 67.13 },
-  { text: 'convergence', x: 1.47, y: 5.89 },
-];
-
-// ── Fallback zone estimate (used only if a widget key has no entry above,
-// e.g. a different DNA/face-board revision with new control names) ──
-// Anchor positions in a 0..100 (x) / 0..112 (y) face-silhouette space.
-const FACEBOARD_ZONES = {
-  brow_L: {cx: 35, cy: 23.2}, brow_R: {cx: 65, cy: 23.2},
-  ear_L: {cx: 14, cy: 44.6}, ear_R: {cx: 86, cy: 44.6},
-  eye_L: {cx: 35, cy: 35.7}, eye_R: {cx: 65, cy: 35.7}, eye_C: {cx: 50, cy: 33.9},
-  cheek_L: {cx: 30, cy: 44.6}, cheek_R: {cx: 70, cy: 44.6},
-  eyelash_L: {cx: 30, cy: 33.0}, eyelash_R: {cx: 70, cy: 33.0},
-  nose_L: {cx: 45, cy: 50.0}, nose_R: {cx: 55, cy: 50.0},
-  mouthUpper_L: {cx: 40, cy: 60.7}, mouthUpper_R: {cx: 60, cy: 60.7}, mouthUpper_C: {cx: 50, cy: 59.8},
-  mouthLower_L: {cx: 40, cy: 67.9}, mouthLower_R: {cx: 60, cy: 67.9}, mouthLower_C: {cx: 50, cy: 68.8},
-  mouthCorner_L: {cx: 27, cy: 64.3}, mouthCorner_R: {cx: 73, cy: 64.3}, mouthCorner_C: {cx: 50, cy: 64.3},
-  teeth_upper: {cx: 50, cy: 56.2}, teeth_lower: {cx: 50, cy: 71.4},
-  tongue: {cx: 50, cy: 74.1},
-  jaw_C: {cx: 50, cy: 78.6}, jaw_L: {cx: 38, cy: 76.8}, jaw_R: {cx: 62, cy: 76.8},
-  chin_L: {cx: 43, cy: 83.0}, chin_R: {cx: 57, cy: 83.0},
-  neck_L: {cx: 38, cy: 90.2}, neck_R: {cx: 62, cy: 90.2}, neck_C: {cx: 50, cy: 90.2},
-  misc: {cx: 50, cy: 7.1},
-};
-
-// Classifies a GUI control's (base name, side) into a face-board zone.
-// base names come pre-stripped of the "CTRL_" prefix and side token by
-// splitGuiControlName (below), e.g. "brow_down", "mouth_cornerPull".
-function classifyFaceboardZone(base, side) {
-  if (/^brow_/.test(base)) return side === 'R' ? 'brow_R' : 'brow_L';
-  if (/^ear_/.test(base)) return side === 'R' ? 'ear_R' : 'ear_L';
-  if (base === 'eye_cheekRaise' || base === 'eye_faceScrunch') return side === 'R' ? 'cheek_R' : 'cheek_L';
-  if (base === 'eye_parallelLook') return 'eye_C';
-  if (/^eyelashes_/.test(base)) return side === 'R' ? 'eyelash_R' : 'eyelash_L';
-  if (/^eye(_|$)/.test(base)) return side === 'R' ? 'eye_R' : 'eye_L';
-  if (/^nose/.test(base)) return side === 'R' ? 'nose_R' : 'nose_L';
-  if (/^teeth/.test(base)) {
-    if (/U$/.test(base)) return 'teeth_upper';
-    if (/D$/.test(base)) return 'teeth_lower';
-    return 'teeth_upper';
-  }
-  if (/^tongue_/.test(base)) return 'tongue';
-  if (base === 'jaw' || base === 'jaw_fwdBack' || base === 'jaw_openExtreme') return 'jaw_C';
-  if (base === 'jaw_clench') return side === 'R' ? 'jaw_R' : 'jaw_L';
-  if (/^jaw_Chin/.test(base) || base === 'jaw_chinCompress') return side === 'R' ? 'chin_R' : 'chin_L';
-  if (/^neck/.test(base)) {
-    if (side === 'C' || !side) return 'neck_C';
-    return side === 'R' ? 'neck_R' : 'neck_L';
-  }
-  if (base === 'mouth') return 'mouth_C';
-  if (base === 'mouth_corner') return side === 'R' ? 'mouthCorner_R' : side === 'C' ? 'mouthCorner_C' : 'mouthCorner_L';
-  if (/^mouth_/.test(base)) {
-    // Corner/side-shape controls that don't carry an explicit U/D suffix.
-    if (/(corner|stretch|dimple|sticky$|suckBlow|lipsBlow)/i.test(base) && !/[UD]$/.test(base)) {
-      return side === 'R' ? 'mouthCorner_R' : side === 'C' ? 'mouthCorner_C' : 'mouthCorner_L';
-    }
-    if (/D$/.test(base) || /lower/i.test(base)) {
-      return side === 'R' ? 'mouthLower_R' : side === 'C' ? 'mouthLower_C' : 'mouthLower_L';
-    }
-    // Default (including U-suffixed and "upperLipRaise"-style names) -> upper.
-    return side === 'R' ? 'mouthUpper_R' : side === 'C' ? 'mouthUpper_C' : 'mouthUpper_L';
-  }
-  return 'misc';
+// Linear position for a 1D control at a given raw value: "rest" is the
+// board position at value=0 (bone location (0,0,0)); "final" is the
+// position at value=entry.finalValue (the bone's most extreme
+// LIMIT_LOCATION value). Bone location is a linear function of the control
+// value, so this interpolation (and extrapolation, if value/finalValue ever
+// exceeds 1) is exact, not approximated.
+function faceboardPos1D(entry, value) {
+  const t = entry.finalValue !== 0 ? value / entry.finalValue : 0;
+  return {
+    x: entry.rest.x + t * (entry.final.x - entry.rest.x),
+    y: entry.rest.y + t * (entry.final.y - entry.rest.y),
+  };
 }
+
+// Bilinear position for a 2D control from its 4 extracted corner positions.
+// Every real face-board box turns out axis-aligned in screen space (verified
+// against all 13 2D controls in faceboard_layout.json), so this reduces to
+// independent per-axis linear interpolation.
+function faceboardPos2D(entry, tx, ty) {
+  const fx = entry.maxX > entry.minX ? (tx - entry.minX) / (entry.maxX - entry.minX) : 0;
+  const fy = entry.maxY > entry.minY ? (ty - entry.minY) / (entry.maxY - entry.minY) : 0;
+  const { minmin, maxmin, minmax } = entry.corners;
+  return {
+    x: minmin.x + fx * (maxmin.x - minmin.x),
+    y: minmin.y + fy * (minmax.y - minmin.y),
+  };
+}
+
 
 // "CTRL_L_brow_down.ty" -> { side: 'L', base: 'brow_down', axis: 'ty' }
 // "CTRL_neck_throatUpDown.ty" -> { side: null, base: 'neck_throatUpDown', axis: 'ty' }
@@ -1624,6 +1386,7 @@ function splitGuiControlName(fullName) {
 
 function buildFaceBoard(rig, container) {
   const { handle, guiBuf, guiCount } = rig;
+  const layout = FACEBOARD_LAYOUT;
 
   // ── Group raw GUI indices into (side, base) widgets with tx/ty indices ──
   const widgets = new Map(); // key "side|base" -> widget
@@ -1633,7 +1396,7 @@ function buildFaceBoard(rig, container) {
     const key = `${side || ''}|${base}`;
     let w = widgets.get(key);
     if (!w) {
-      w = { side, base, key, label: `${side ? side + '_' : ''}${base}`, zone: classifyFaceboardZone(base, side) };
+      w = { side, base, key, label: `${side ? side + '_' : ''}${base}` };
       widgets.set(key, w);
     }
     if (axis === 'tx') {
@@ -1647,43 +1410,31 @@ function buildFaceBoard(rig, container) {
   }
   const widgetList = Array.from(widgets.values());
 
-  // ── Position each widget from the real, authored face-board layout ──
-  // (FACEBOARD_POSITIONS, extracted from face_board.blend). Any widget key
-  // missing from that table (a control the shipped board doesn't have --
-  // none currently, for this DNA) falls back to the estimated zone grid so
-  // the panel still renders something reasonable rather than breaking.
+  // ── Attach each widget's real Blender layout entry from the JSON ──
   const unmatched = [];
   for (const w of widgetList) {
-    const real = FACEBOARD_POSITIONS[w.key];
-    if (real) {
-      w.baseX = real.x;
-      w.baseY = real.y;
+    w.is1D = (w.txIndex === undefined) !== (w.tyIndex === undefined);
+    const entry = layout.controls[w.key];
+    if (entry) {
+      w.entry = entry;
     } else {
       unmatched.push(w);
     }
   }
   if (unmatched.length > 0) {
-    console.warn(`Face board: ${unmatched.length} control(s) missing from the extracted layout, using estimated zone positions:`, unmatched.map(w => w.key));
-    const byZone = new Map();
-    for (const w of unmatched) {
-      if (!byZone.has(w.zone)) byZone.set(w.zone, []);
-      byZone.get(w.zone).push(w);
-    }
-    const SPACING = 3.6;
-    for (const [zone, list] of byZone) {
-      const anchor = FACEBOARD_ZONES[zone] || FACEBOARD_ZONES.misc;
-      const cols = Math.max(1, Math.ceil(Math.sqrt(list.length)));
-      list.forEach((w, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        w.baseX = anchor.cx + (col - (cols - 1) / 2) * SPACING;
-        w.baseY = anchor.cy + row * SPACING;
-      });
-    }
+    console.warn(`Face board: ${unmatched.length} control(s) missing from faceboard_layout.json, placing in a fallback corner:`, unmatched.map(w => w.key));
+    unmatched.forEach((w, i) => {
+      w.entry = w.is1D
+        ? { rest: { x: 2, y: 2 + i * 3 }, final: { x: 6, y: 2 + i * 3 }, finalValue: (w.txIndex !== undefined ? w.txMax : w.tyMax) || 1 }
+        : { corners: {
+              minmin: { x: 2, y: 2 + i * 3 }, maxmin: { x: 6, y: 2 + i * 3 },
+              minmax: { x: 2, y: 5 + i * 3 }, maxmax: { x: 6, y: 5 + i * 3 } },
+            minX: w.txMin, maxX: w.txMax, minY: w.tyMin, maxY: w.tyMax };
+    });
   }
 
   // ── DOM: scrollable/zoomable viewport, one draggable dot per widget ──
-  // positioned by FACEBOARD_POSITIONS (the board is rendered at a fixed
+  // positioned from faceboard_layout.json (the board is rendered at a fixed
   // 900x900 logical size so 169 real, faithfully-spaced Blender control
   // points aren't crammed into the ~320px sidebar; the viewport below lets
   // the user scroll and the zoom slider scales it up for precision).
@@ -1710,8 +1461,8 @@ function buildFaceBoard(rig, container) {
     board.style.transform = `scale(${zoomSlider.value})`;
   });
 
-  // Real group-label captions from Blender's face board (see FACEBOARD_LABELS).
-  for (const l of FACEBOARD_LABELS) {
+  // Real group-label captions from Blender's face board.
+  for (const l of layout.labels) {
     const el = document.createElement('div');
     el.className = 'fb-label';
     el.textContent = l.text;
@@ -1720,55 +1471,35 @@ function buildFaceBoard(rig, container) {
     board.appendChild(el);
   }
 
-  const DRAG_RANGE_PX = 40; // pixel radius mapped to a control's [min,max]
-
   for (const w of widgetList) {
     const dot = document.createElement('div');
-    dot.className = 'fb-dot' + (w.txIndex === undefined ? ' fb-1d' : '');
+    dot.className = 'fb-dot' + (w.is1D ? ' fb-1d' : '');
     dot.dataset.label = w.label;
-    dot.style.left = `${w.baseX}%`;
-    dot.style.top = `${w.baseY}%`;
     board.appendChild(dot);
 
-    // Single-axis (1D) controls: real drag direction from FACEBOARD_AXES
-    // (the Blender track-mesh angle -- see the table's comment). Most
-    // sliders are NOT vertical/horizontal in the real board; only 2D
-    // (free tx+ty) controls keep the default axis-aligned box behavior.
-    const is1D = (w.txIndex === undefined) !== (w.tyIndex === undefined);
-    const axisInfo = is1D ? FACEBOARD_AXES[w.key] : null;
-    const axisDir = axisInfo ? axisInfo.dir : (w.tyIndex !== undefined ? [0, -1] : [1, 0]);
+    const applyDotPosition = () => {
+      let pos;
+      if (w.is1D) {
+        const value = w.txIndex !== undefined ? guiBuf[w.txIndex] : guiBuf[w.tyIndex];
+        pos = faceboardPos1D(w.entry, value);
+      } else {
+        const tx = w.txIndex !== undefined ? guiBuf[w.txIndex] : 0;
+        const ty = w.tyIndex !== undefined ? guiBuf[w.tyIndex] : 0;
+        pos = faceboardPos2D(w.entry, tx, ty);
+      }
+      dot.style.left = `${pos.x}%`;
+      dot.style.top = `${pos.y}%`;
+    };
+    applyDotPosition();
 
     let dragging = false;
-    let startX = 0, startY = 0;
+    let startClientX = 0, startClientY = 0;
     let startTx = 0, startTy = 0;
-
-    const valueToOffsetPx = () => {
-      if (is1D) {
-        const idx = w.txIndex !== undefined ? w.txIndex : w.tyIndex;
-        const min = w.txIndex !== undefined ? w.txMin : w.tyMin;
-        const max = w.txIndex !== undefined ? w.txMax : w.tyMax;
-        if (max <= min) return { ox: 0, oy: 0 };
-        const frac = ((guiBuf[idx] - min) / (max - min) - 0.5) * 2; // -1..1
-        return { ox: frac * DRAG_RANGE_PX * axisDir[0], oy: frac * DRAG_RANGE_PX * axisDir[1] };
-      }
-      const ox = w.txIndex !== undefined && w.txMax > w.txMin
-        ? ((guiBuf[w.txIndex] - w.txMin) / (w.txMax - w.txMin) - 0.5) * 2 * DRAG_RANGE_PX
-        : 0;
-      const oy = w.tyIndex !== undefined && w.tyMax > w.tyMin
-        ? ((guiBuf[w.tyIndex] - w.tyMin) / (w.tyMax - w.tyMin) - 0.5) * -2 * DRAG_RANGE_PX
-        : 0;
-      return { ox, oy };
-    };
-    const applyDotOffset = () => {
-      const { ox, oy } = valueToOffsetPx();
-      dot.style.transform = `translate(${ox}px, ${oy}px)`;
-    };
-    applyDotOffset();
 
     dot.addEventListener('pointerdown', (e) => {
       dragging = true;
       try { dot.setPointerCapture(e.pointerId); } catch (err) { /* no active pointer to capture */ }
-      startX = e.clientX; startY = e.clientY;
+      startClientX = e.clientX; startClientY = e.clientY;
       startTx = w.txIndex !== undefined ? guiBuf[w.txIndex] : 0;
       startTy = w.tyIndex !== undefined ? guiBuf[w.tyIndex] : 0;
       dot.classList.add('fb-active');
@@ -1777,32 +1508,44 @@ function buildFaceBoard(rig, container) {
     });
     dot.addEventListener('pointermove', (e) => {
       if (!dragging) return;
-      if (is1D) {
-        // Project the mouse delta onto the control's real (possibly
-        // diagonal) drag axis instead of assuming horizontal/vertical.
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        const frac = (dx * axisDir[0] + dy * axisDir[1]) / DRAG_RANGE_PX;
+      // Convert the mouse delta into board percent-space via the board's
+      // actual rendered size, so dragging stays correctly scaled at any
+      // zoom level (the CSS zoom transform changes getBoundingClientRect()
+      // accordingly).
+      const rect = board.getBoundingClientRect();
+      const dxPct = (e.clientX - startClientX) / rect.width * 100;
+      const dyPct = (e.clientY - startClientY) / rect.height * 100;
+
+      if (w.is1D) {
+        // Project the mouse delta onto the control's real drag axis -- the
+        // exact rest->final vector extracted from Blender, not a guessed
+        // horizontal/vertical/diagonal direction.
+        const axisX = w.entry.final.x - w.entry.rest.x;
+        const axisY = w.entry.final.y - w.entry.rest.y;
+        const axisLenSq = axisX * axisX + axisY * axisY;
+        const proj = axisLenSq > 1e-9 ? (dxPct * axisX + dyPct * axisY) / axisLenSq : 0;
+        const deltaValue = proj * w.entry.finalValue;
         if (w.txIndex !== undefined) {
-          guiBuf[w.txIndex] = Math.min(w.txMax, Math.max(w.txMin, startTx + frac * (w.txMax - w.txMin) / 2));
+          guiBuf[w.txIndex] = Math.min(w.txMax, Math.max(w.txMin, startTx + deltaValue));
         } else {
-          guiBuf[w.tyIndex] = Math.min(w.tyMax, Math.max(w.tyMin, startTy + frac * (w.tyMax - w.tyMin) / 2));
+          guiBuf[w.tyIndex] = Math.min(w.tyMax, Math.max(w.tyMin, startTy + deltaValue));
         }
       } else {
+        // Independent per-axis mapping using the real corner geometry (see
+        // faceboardPos2D) -- handles boxes whose screen axes run opposite
+        // to their control axes (e.g. R|mouth_corner) automatically.
         if (w.txIndex !== undefined) {
-          const dx = e.clientX - startX;
-          const frac = dx / DRAG_RANGE_PX; // -1..1 roughly, unclamped input
-          const val = Math.min(w.txMax, Math.max(w.txMin, startTx + frac * (w.txMax - w.txMin) / 2));
-          guiBuf[w.txIndex] = val;
+          const spanX = w.entry.corners.maxmin.x - w.entry.corners.minmin.x;
+          const deltaTx = Math.abs(spanX) > 1e-9 ? dxPct / spanX * (w.entry.maxX - w.entry.minX) : 0;
+          guiBuf[w.txIndex] = Math.min(w.txMax, Math.max(w.txMin, startTx + deltaTx));
         }
         if (w.tyIndex !== undefined) {
-          const dy = e.clientY - startY;
-          const frac = -dy / DRAG_RANGE_PX;
-          const val = Math.min(w.tyMax, Math.max(w.tyMin, startTy + frac * (w.tyMax - w.tyMin) / 2));
-          guiBuf[w.tyIndex] = val;
+          const spanY = w.entry.corners.minmax.y - w.entry.corners.minmin.y;
+          const deltaTy = Math.abs(spanY) > 1e-9 ? dyPct / spanY * (w.entry.maxY - w.entry.minY) : 0;
+          guiBuf[w.tyIndex] = Math.min(w.tyMax, Math.max(w.tyMin, startTy + deltaTy));
         }
       }
-      applyDotOffset();
+      applyDotPosition();
       dirty = true;
     });
     const endDrag = (e) => {
@@ -1816,7 +1559,77 @@ function buildFaceBoard(rig, container) {
     dot.addEventListener('pointercancel', endDrag);
   }
 
+  // Reused by applyEyeAim() to write computed x/y directly into the same
+  // GUI control slots (index + min/max) this board already resolved.
+  rig.eyeAimGuiIndices = new Map(widgetList.map(w => [w.key, w]));
+
   return widgetList;
+}
+
+// Draggable 3D target the eyes look at (ports rig_instance.py's eye-aim
+// system -- see applyEyeAim). Defaults near where Blender's own
+// position_eye_aim() places it: eye-center + a bit in front of the face.
+function buildEyeAimTarget(rig) {
+  const geo = new THREE.SphereGeometry(0.012, 12, 12);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xff3366, transparent: true, opacity: 0.85 });
+  const target = new THREE.Mesh(geo, mat);
+  target.visible = false;
+
+  const eyeL = rig.boneByName.get('FACIAL_L_Eye');
+  const eyeR = rig.boneByName.get('FACIAL_R_Eye');
+  const center = new THREE.Vector3();
+  if (eyeL && eyeR) {
+    rig.rootBone.updateMatrixWorld(true);
+    const pL = eyeL.getWorldPosition(new THREE.Vector3());
+    const pR = eyeR.getWorldPosition(new THREE.Vector3());
+    center.addVectors(pL, pR).multiplyScalar(0.5);
+    center.z += 0.35; // "in front of the face" -- eyes look forward along +Z here
+  }
+  target.position.copy(center);
+  scene.add(target);
+  rig.eyeAimTarget = target;
+
+  // Simple drag: on pointerdown over the sphere, move it on a plane facing
+  // the camera at its current depth, following the mouse until pointerup.
+  let dragging = false;
+  const dragPlane = new THREE.Plane();
+  const raycaster = new THREE.Raycaster();
+  const hitPoint = new THREE.Vector3();
+
+  const toNDC = (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+  };
+
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (!target.visible) return;
+    const ndc = toNDC(e);
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObject(target, false);
+    if (hits.length === 0) return;
+    dragging = true;
+    orbit.enabled = false;
+    camera.getWorldDirection(dragPlane.normal);
+    dragPlane.setFromNormalAndCoplanarPoint(dragPlane.normal, target.position);
+    e.stopPropagation();
+  });
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const ndc = toNDC(e);
+    raycaster.setFromCamera(ndc, camera);
+    if (raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
+      target.position.copy(hitPoint);
+      dirty = true;
+    }
+  });
+  const endDrag = () => { if (dragging) { dragging = false; orbit.enabled = true; } };
+  renderer.domElement.addEventListener('pointerup', endDrag);
+  renderer.domElement.addEventListener('pointercancel', endDrag);
+
+  return target;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1879,6 +1692,27 @@ function buildGUI(rig, containerId, { faceBoard = false } = {}) {
 
 buildGUI(headRig, 'ctrl-head', { faceBoard: true });
 buildGUI(bodyRig, 'ctrl-body');
+
+// ── Eye aim toggle ─────────────────────────────────────────────────────
+{
+  const eyeAimTarget = buildEyeAimTarget(headRig);
+  const headContainer = document.getElementById('ctrl-head');
+  const row = document.createElement('div');
+  row.className = 'ctrl';
+  row.style.marginBottom = '8px';
+  const label = document.createElement('label');
+  label.textContent = 'Eye aim (drag red dot)';
+  label.style.cursor = 'pointer';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.addEventListener('change', () => {
+    eyeAimTarget.visible = checkbox.checked;
+    dirty = true;
+  });
+  row.appendChild(checkbox);
+  row.appendChild(label);
+  headContainer.insertBefore(row, headContainer.firstChild);
+}
 
 window.headRig = headRig;
 window.bodyRig = bodyRig;
