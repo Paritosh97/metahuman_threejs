@@ -1751,14 +1751,14 @@ buildPosingUI();
 // directly to tweak layout, or regenerate it (see wine_extract_true_extents.py
 // referenced in project notes) if a different DNA/face-board revision
 // changes control names.
-const FACEBOARD_LAYOUT = await fetch('faceboard_layout.json').then(r => r.json());
+const FACEBOARD_LAYOUT = await fetch('js/faceboard_layout.json').then(r => r.json());
 
 // ARKit-52 -> MetaHuman raw-control weighted mapping. Real Epic data
 // extracted from their own PA_MetaHuman_ARKit_Mapping PoseAsset (via
 // https://github.com/Dylanyz/ARKitRemap) -- not guessed. See arkit_mapping.json
 // for the source note and the one flagged approximation (mouthClose, which
 // Epic computes at runtime via an AnimBP formula rather than a static pose).
-const ARKIT_MAPPING = await fetch('arkit_mapping.json').then(r => r.json()).then(d => d.blendshapes);
+const ARKIT_MAPPING = await fetch('js/arkit_mapping.json').then(r => r.json()).then(d => d.blendshapes);
 
 // Linear position for a 1D control at a given raw value: "rest" is the
 // board position at value=0 (bone location (0,0,0)); "final" is the

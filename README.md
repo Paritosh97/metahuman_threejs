@@ -5,7 +5,7 @@ This is a fork of Epic Games' [OpenRigLogic](https://github.com/EpicGames/OpenRi
 Two things were added on top of the upstream library:
 
 1. **`riglogic_api.cpp`** — a WebAssembly bridge that exposes RigLogic/DNA evaluation to JavaScript.
-2. **`web/`** — a Three.js demo that consumes that bridge to render and control a MetaHuman in the browser.
+2. **`index.html` / `js/` / `metahuman/`** — a Three.js demo that consumes that bridge to render and control a MetaHuman in the browser. These live at the repository root (rather than a `web/` subfolder) specifically so the repo can be served as-is by GitHub Pages — see [Deploying to GitHub Pages](#deploying-to-github-pages) below.
 
 Everything below "Original OpenRigLogic README" is unmodified upstream documentation.
 
@@ -29,41 +29,41 @@ emcmake cmake -B build-web
 emmake cmake --build build-web --target riglogic_wasm
 ```
 
-This produces `riglogic_wasm.js` / `riglogic_wasm.wasm`, which are copied into `web/js/wasm/`.
+This produces `riglogic_wasm.js` / `riglogic_wasm.wasm`, which are copied into `js/wasm/`.
 
-## 2. `web/` — the Three.js demo
+## 2. The Three.js demo
 
 ```
-web/
-├── index.html              # entire app: WASM loading, rig/mesh construction, UI, render loop
-├── js/wasm/                # compiled riglogic_wasm.js / .wasm output
-├── faceboard_layout.json   # face control board layout (see below) — hand-editable
-├── arkit_mapping.json      # ARKit-52 → MetaHuman raw-control mapping (see below) — hand-editable
-└── metahuman/<character>/  # per-character assets, e.g. metahuman/bazeel/
-    ├── head.dna, body.dna
-    ├── ExportManifest.json, Maps/, Masks/   # textures, wrinkle masks
-    ├── clothes/             # skinned garment .glb + textures
-    └── groom/               # hair/eyebrow .glb + textures
+index.html                # entire app: WASM loading, rig/mesh construction, UI, render loop
+js/
+├── wasm/                  # compiled riglogic_wasm.js / .wasm output
+├── faceboard_layout.json  # face control board layout (see below) — hand-editable
+└── arkit_mapping.json     # ARKit-52 → MetaHuman raw-control mapping (see below) — hand-editable
+metahuman/<character>/     # per-character assets, e.g. metahuman/bazeel/
+├── head.dna, body.dna
+├── ExportManifest.json, Maps/, Masks/   # textures, wrinkle masks
+├── clothes/                # skinned garment .glb + textures
+└── groom/                  # hair/eyebrow .glb + textures
 ```
 
-`index.html` is intentionally a single file: it loads the WASM module, builds the head and body skeletons and skinned meshes straight from DNA data, evaluates RigLogic every frame, and renders with Three.js. No build step is required to run it — serve `web/` with any static file server.
+`index.html` is intentionally a single file: it loads the WASM module, builds the head and body skeletons and skinned meshes straight from DNA data, evaluates RigLogic every frame, and renders with Three.js. No build step or bundler is required to run it — serve the repository root with any static file server (all asset paths in `index.html` are relative, so this also works unmodified from a GitHub Pages subpath).
 
 Two controls are included for posing the face:
 
-- **Face control board** — a 2D draggable-dot UI reproducing the real MetaHuman face board from Blender's `character_dna` addon, extracted control-by-control (position, drag range, grouping boxes and labels) rather than hand-placed. Its layout lives entirely in `faceboard_layout.json`, so it can be hand-edited or regenerated without touching code.
-- **ARKit-52 blendshape panel** — the same face driven by the standard 52 ARKit blendshape names instead of MetaHuman's native controls, for compatibility with ARKit-based facial capture pipelines. Moving an ARKit slider also updates the corresponding face-board dot live, so both stay visibly consistent when mixed. The mapping (`arkit_mapping.json`) is real data extracted from Epic's own `PA_MetaHuman_ARKit_Mapping` pose asset via [Dylanyz/ARKitRemap](https://github.com/Dylanyz/ARKitRemap) — credit to that project for surfacing it.
+- **Face control board** — a 2D draggable-dot UI reproducing the real MetaHuman face board from Blender's `character_dna` addon, extracted control-by-control (position, drag range, grouping boxes and labels) rather than hand-placed. Its layout lives entirely in `js/faceboard_layout.json`, so it can be hand-edited or regenerated without touching code.
+- **ARKit-52 blendshape panel** — the same face driven by the standard 52 ARKit blendshape names instead of MetaHuman's native controls, for compatibility with ARKit-based facial capture pipelines. Moving an ARKit slider also updates the corresponding face-board dot live, so both stay visibly consistent when mixed. The mapping (`js/arkit_mapping.json`) is real data extracted from Epic's own `PA_MetaHuman_ARKit_Mapping` pose asset via [Dylanyz/ARKitRemap](https://github.com/Dylanyz/ARKitRemap) — credit to that project for surfacing it.
 
 ## 3. Using your own MetaHuman
 
 The demo ships with one sample character (`metahuman/bazeel/`). To use your own:
 
-1. **Face and body** — in Unreal Engine, open your MetaHuman and run **Export > DCC Export**. This produces `head.dna`, `body.dna`, textures, and `ExportManifest.json`. Copy these into a new `web/metahuman/<name>/` folder, matching the existing structure.
+1. **Face and body** — in Unreal Engine, open your MetaHuman and run **Export > DCC Export**. This produces `head.dna`, `body.dna`, textures, and `ExportManifest.json`. Copy these into a new `metahuman/<name>/` folder, matching the existing structure.
 2. **Clothing and hair/eyebrows** — DCC Export does not include these, so they're exported separately from the Unreal project:
    - Export the character's outfit as a Skeletal Mesh FBX, and the hair/eyebrow Groom's card mesh (Static Mesh FBX) plus their base color textures.
    - Convert each FBX to `.glb` (this repo used Blender: import the FBX, then export glTF/GLB — see the comments in `index.html`'s `attachGarment`/`attachGroomSkinned` for the exact scale/transform pitfalls to avoid).
    - Place the resulting `.glb` + textures into `clothes/` and `groom/` under your character's folder.
 3. **Wire it up** — update the character/mesh/texture filenames referenced near the top of `index.html` (`CHARACTER_DIR` and the `attachGarment`/`attachGroom` calls) to match your files.
-4. **Face board / ARKit data** — `faceboard_layout.json` and `arkit_mapping.json` are keyed by this DNA's control names. If your MetaHuman uses the standard MetaHuman rig topology, they can be reused as-is; only regenerate them if your control names actually differ.
+4. **Face board / ARKit data** — `js/faceboard_layout.json` and `js/arkit_mapping.json` are keyed by this DNA's control names. If your MetaHuman uses the standard MetaHuman rig topology, they can be reused as-is; only regenerate them if your control names actually differ.
 
 ---
 
