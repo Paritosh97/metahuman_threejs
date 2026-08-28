@@ -508,6 +508,125 @@ async function attachGroomRigid(headBone, glbUrl, texturePath, { doubleSided = t
   return mesh;
 }
 
+// Loads a hair/eyebrow card mesh and "wrap-binds" it onto `headMesh`'s own
+// skin: for every card vertex, finds the nearest vertex on the real skinned
+// head_lod0_mesh (in rest pose, same world-space convention as everything
+// else -- see attachGroomRigid's authoredWorld handling above) and copies
+// that vertex's skinIndex/skinWeight verbatim, so the card mesh becomes a
+// genuine SkinnedMesh bound to headMesh's OWN THREE.Skeleton object (no name
+// matching needed -- the copied indices already reference the right bones,
+// since headMesh is already correctly bound to that exact skeleton).
+//
+// Why this exists / attachGroomRigid isn't enough for eyebrows: MetaHuman's
+// facial expressions are primarily JOINT-driven (RigLogic outputs joint
+// transforms for e.g. "brow inner up", which head_lod0_mesh follows via
+// normal bone skinning; blend shapes are only the correctives on top) --
+// confirmed by inspecting headMesh's own geometry: it has real skinIndex/
+// skinWeight attributes driven by rig.bones. A rigidly-head-bone-parented
+// mesh only follows the head's overall position/rotation, never these
+// per-vertex joint deformations, which is why the eyebrow mesh stayed static
+// under brow expressions. This is not something Unreal's own groom-binding
+// data could have told us either (it's a proprietary runtime GPU binding,
+// not exported skin weights) -- nearest-surface-vertex skin inheritance is
+// the standard substitute technique for binding unskinned prop/hair geometry
+// to a skinned mesh, and needs no extra source data beyond what's already
+// loaded.
+async function attachGroomSkinned(headMesh, glbUrl, texturePath, { doubleSided = true } = {}) {
+  const gltf = await gltfLoader.loadAsync(glbUrl);
+  let mesh = null;
+  gltf.scene.traverse(o => { if (!mesh && o.isMesh) mesh = o; });
+  if (!mesh) {
+    console.warn(`attachGroomSkinned: no mesh found in ${glbUrl}`);
+    return null;
+  }
+  gltf.scene.updateMatrixWorld(true);
+  const authoredWorld = mesh.matrixWorld.clone();
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(authoredWorld);
+
+  // Bake the mesh's real authored world transform directly into its vertex
+  // data (rather than leaving it as an object-level transform, like
+  // attachGroomRigid does) so its positions are directly comparable to
+  // headMesh's own rest-pose vertex positions for the nearest-neighbor
+  // search below.
+  const geo = mesh.geometry;
+  const pos = geo.attributes.position;
+  const nrm = geo.attributes.normal;
+  const v = new THREE.Vector3(), n = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(authoredWorld);
+    pos.setXYZ(i, v.x, v.y, v.z);
+    if (nrm) {
+      n.fromBufferAttribute(nrm, i).applyMatrix3(normalMatrix).normalize();
+      nrm.setXYZ(i, n.x, n.y, n.z);
+    }
+  }
+  pos.needsUpdate = true;
+  if (nrm) nrm.needsUpdate = true;
+  geo.computeBoundingBox();
+
+  // Nearest-neighbor search restricted to headMesh vertices within a padded
+  // bounding box around this card mesh -- keeps a brute-force search fast
+  // (thousands of card vertices x a few hundred nearby head vertices,
+  // instead of x the full head mesh).
+  const PAD = 0.05; // 5cm
+  const box = geo.boundingBox.clone().expandByScalar(PAD);
+  const headPos = headMesh.geometry.attributes.position;
+  const headSkinIndex = headMesh.geometry.attributes.skinIndex;
+  const headSkinWeight = headMesh.geometry.attributes.skinWeight;
+  const candidates = [];
+  const hv = new THREE.Vector3();
+  for (let i = 0; i < headPos.count; i++) {
+    hv.fromBufferAttribute(headPos, i);
+    if (box.containsPoint(hv)) candidates.push(i);
+  }
+  if (candidates.length === 0) {
+    console.warn(`attachGroomSkinned: no nearby head vertices found for ${glbUrl}; falling back to rigid attach.`);
+    return null;
+  }
+
+  const skinIndex = new Uint16Array(pos.count * 4);
+  const skinWeight = new Float32Array(pos.count * 4);
+  const cv = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    let bestDist = Infinity, bestIdx = candidates[0];
+    for (const ci of candidates) {
+      cv.fromBufferAttribute(headPos, ci);
+      const d = v.distanceToSquared(cv);
+      if (d < bestDist) { bestDist = d; bestIdx = ci; }
+    }
+    // Three.js r133's BufferAttribute has no getComponent() (added in a
+    // later revision) -- use the explicit per-axis getters instead.
+    const getters = ['getX', 'getY', 'getZ', 'getW'];
+    for (let k = 0; k < 4; k++) {
+      skinIndex[i * 4 + k] = headSkinIndex[getters[k]](bestIdx);
+      skinWeight[i * 4 + k] = headSkinWeight[getters[k]](bestIdx);
+    }
+  }
+  geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
+  geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
+
+  const tex = loadAttachmentTexture(texturePath, { srgb: true });
+  const material = new THREE.MeshStandardMaterial({
+    map: tex,
+    alphaTest: 0.02, // see attachGroomRigid's comment on this texture's real (low) alpha "coverage" range
+    transparent: false,
+    side: doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+    roughness: 0.45,
+    metalness: 0.0,
+  });
+
+  const skinned = new THREE.SkinnedMesh(geo, material);
+  skinned.name = mesh.name;
+  skinned.frustumCulled = false;
+  // headMesh's skinIndex values already reference headMesh.skeleton.bones
+  // directly (that's the skeleton we just copied weights from) -- no name
+  // matching/rebuild needed, just bind to that same Skeleton object.
+  skinned.bind(headMesh.skeleton, new THREE.Matrix4());
+  scene.add(skinned);
+  return skinned;
+}
+
 async function setupWrinkleBlend(rig, mesh) {
   const material = mesh.material;
   if (!(material instanceof THREE.MeshStandardMaterial) || !material.map) return;
@@ -870,12 +989,17 @@ function buildRig(handle, label, mode) {
   // head_raw_quat_plan / body_raw_plan. Grouped by bone name -> {x,y,z,w: rawIndex}.
   const rawControlCount = rl_get_raw_control_count(handle);
   const driverBoneRawIndices = new Map();
+  // Normalized (prefix-stripped, lowercased) raw-control name -> index, used
+  // by the ARKit blendshape panel to resolve arkit_mapping.json's control
+  // names without hardcoding this DNA's exact casing.
+  const rawControlByName = new Map();
   for (let i = 0; i < rawControlCount; i++) {
     const full = RL.UTF8ToString(rl_get_raw_control_name(handle, i));
     const dot = full.lastIndexOf('.');
     if (dot < 0) continue;
     const boneName = full.slice(0, dot);
     const axisTag = full.slice(dot + 1);
+    rawControlByName.set(axisTag.toLowerCase(), i);
     if (!axisTag.startsWith('q')) continue;
     const axis = axisTag.slice(1);
     if (axis !== 'x' && axis !== 'y' && axis !== 'z' && axis !== 'w') continue;
@@ -1045,10 +1169,13 @@ function buildRig(handle, label, mode) {
     neutralT, neutralR, neutralQ,
     jntView, blendView, wrinkleView,
     guiCount, jointCount, floatCount, blendCount, wrinkleCount, fpj, hasScale,
-    applyJointSet, driverBoneRawIndices,
+    applyJointSet, driverBoneRawIndices, rawControlByName,
     // Driver bones the user has posed this session; their live bone
     // quaternion is pushed into raw controls every evaluate() call.
     posedDriverBones: new Set(),
+    // ARKit-52 slider values (name -> 0..1), pushed into raw controls via
+    // pushArkitControls() every evaluate() call. See ARKIT_MAPPING.
+    arkitValues: new Map(),
   };
 }
 
@@ -1083,6 +1210,73 @@ function pushDriverPoses(rig) {
 function markBonePosed(rig, boneName) {
   rig.posedDriverBones.add(boneName);
   dirty = true;
+}
+
+// Pushes the ARKit-52 panel's active (nonzero) slider values into RigLogic
+// raw controls, per ARKIT_MAPPING's weighted combinations (real Epic data --
+// see arkit_mapping.json). Call after rl_set_gui_controls and before
+// rl_calculate_and_get_outputs, same ordering constraint as pushDriverPoses.
+// Only raw controls with at least one active contributor are touched, so a
+// slider left at 0 never overwrites whatever the face board's GUI mapping
+// already wrote there -- EXCEPT for indices this function itself wrote last
+// frame: those get one explicit reset to 0 when their contributor drops
+// back to 0, so un-dragging an ARKit slider actually releases the control
+// instead of leaving it stuck at its last value forever.
+//
+// Also keeps the face board's own dots visually in sync: for the subset of
+// target raw controls with a known 1:1 GUI-slot correspondence (see
+// buildFaceBoard's guiSlotByRawIndex), writes the same value into guiBuf and
+// refreshes that widget's dot -- purely cosmetic (evaluate() already sends
+// guiBuf through rl_set_gui_controls BEFORE this function's raw writes, so
+// this can't fight with or override the real ARKit-driven deformation, only
+// visualize it). This is what lets face-board dragging and ARKit sliders
+// stay visibly consistent with each other -- mix both and the board always
+// reflects the real current state.
+function pushArkitControls(rig) {
+  const hadPrevious = rig.lastArkitRawIndices && rig.lastArkitRawIndices.size > 0;
+  if ((!rig.arkitValues || rig.arkitValues.size === 0) && !hadPrevious) return;
+
+  const accum = new Map(); // rawIndex -> summed value
+  for (const [name, value] of rig.arkitValues) {
+    if (!value) continue;
+    const entries = ARKIT_MAPPING[name];
+    if (!entries) continue;
+    for (const e of entries) {
+      const idx = rig.rawControlByName.get(e.control.toLowerCase());
+      if (idx === undefined) continue;
+      accum.set(idx, (accum.get(idx) || 0) + value * e.weight);
+    }
+  }
+
+  // Release any control this function wrote last frame but no longer has an
+  // active contributor for, so it doesn't stay stuck at a stale value.
+  if (rig.lastArkitRawIndices) {
+    for (const idx of rig.lastArkitRawIndices) {
+      if (!accum.has(idx)) accum.set(idx, 0);
+    }
+  }
+  // Track exactly the indices with an active nonzero contributor this
+  // frame, so next frame knows what to release if they drop to zero.
+  rig.lastArkitRawIndices = new Set();
+  for (const [name, value] of rig.arkitValues) {
+    if (!value) continue;
+    const entries = ARKIT_MAPPING[name];
+    if (!entries) continue;
+    for (const e of entries) {
+      const idx = rig.rawControlByName.get(e.control.toLowerCase());
+      if (idx !== undefined) rig.lastArkitRawIndices.add(idx);
+    }
+  }
+
+  for (const [idx, value] of accum) {
+    const clamped = Math.max(0, Math.min(1, value));
+    rl_set_raw_control(rig.handle, idx, clamped);
+    const slot = rig.guiSlotByRawIndex && rig.guiSlotByRawIndex.get(idx);
+    if (slot) {
+      rig.guiBuf[slot.guiIndex] = Math.max(slot.min, Math.min(slot.max, clamped));
+      if (slot.widget.refreshDot) slot.widget.refreshDot();
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1172,6 +1366,7 @@ function evaluate(rig) {
   // Driver-bone poses (direct FK, set via markBonePosed) become raw-control
   // inputs for this evaluation pass.
   pushDriverPoses(rig);
+  pushArkitControls(rig);
 
   rl_calculate_and_get_outputs(handle,
                   jntPtr, floatCount,
@@ -1332,16 +1527,28 @@ attachGarment(bodyRig, `${CLOTHES_DIR}/mh_Outfits_LOD0.glb`, 'MI_WI_DefaultGarme
   occlusionMap: `${CLOTHES_DIR}/MI_WI_DefaultGarment_M_DG_bodyShapeA_Short_Occlusion.png`,
 }).catch(err => console.warn('attachGarment (Short) failed:', err));
 
-// ── Hair / eyebrows (unskinned card meshes, rigidly attached to the head bone) ──
+// ── Hair / eyebrows -- wrap-bound to head_lod0_mesh's own skin (see
+// attachGroomSkinned) so they follow RigLogic's joint-driven facial
+// expressions (e.g. "brow inner up"), not just rigid head movement. Falls
+// back to the old rigid head-bone attach if headMainMesh isn't a proper
+// skinned mesh for some reason. ──
 const headBoneForGroom = headRig.boneByName.get('head');
-if (headBoneForGroom) {
-  attachGroomRigid(headBoneForGroom, `${GROOM_DIR}/Hair_S_Casual_LOD0.glb`, `${GROOM_DIR}/MI_WI_Hair_S_Casual_Hair_Cards_BaseColor.png`)
-    .catch(err => console.warn('attachGroomRigid (hair) failed:', err));
-  attachGroomRigid(headBoneForGroom, `${GROOM_DIR}/Eyebrows_L_Shaded_LOD0.glb`, `${GROOM_DIR}/MI_WI_Eyebrows_L_Shaded_Hair_BaseColor.png`)
-    .catch(err => console.warn('attachGroomRigid (eyebrows) failed:', err));
-} else {
-  console.warn('No "head" bone found on headRig -- skipping hair/eyebrow attachment.');
+async function attachGroom(name, glbUrl, texturePath) {
+  if (headMainMesh && headMainMesh.isSkinnedMesh) {
+    const skinned = await attachGroomSkinned(headMainMesh, glbUrl, texturePath);
+    if (skinned) return skinned;
+  }
+  if (!headBoneForGroom) {
+    console.warn(`No "head" bone found on headRig -- skipping ${name} attachment.`);
+    return null;
+  }
+  console.warn(`attachGroomSkinned unavailable for ${name}; falling back to rigid head-bone attach.`);
+  return attachGroomRigid(headBoneForGroom, glbUrl, texturePath);
 }
+attachGroom('hair', `${GROOM_DIR}/Hair_S_Casual_LOD0.glb`, `${GROOM_DIR}/MI_WI_Hair_S_Casual_Hair_Cards_BaseColor.png`)
+  .catch(err => console.warn('attachGroom (hair) failed:', err));
+attachGroom('eyebrows', `${GROOM_DIR}/Eyebrows_L_Shaded_LOD0.glb`, `${GROOM_DIR}/MI_WI_Eyebrows_L_Shaded_Hair_BaseColor.png`)
+  .catch(err => console.warn('attachGroom (eyebrows) failed:', err));
 
 // ── Head-to-body linkage ────────────────────────────────────────────────
 // head.dna carries its own redundant copy of the shared upper-body chain
@@ -1546,6 +1753,13 @@ buildPosingUI();
 // changes control names.
 const FACEBOARD_LAYOUT = await fetch('faceboard_layout.json').then(r => r.json());
 
+// ARKit-52 -> MetaHuman raw-control weighted mapping. Real Epic data
+// extracted from their own PA_MetaHuman_ARKit_Mapping PoseAsset (via
+// https://github.com/Dylanyz/ARKitRemap) -- not guessed. See arkit_mapping.json
+// for the source note and the one flagged approximation (mouthClose, which
+// Epic computes at runtime via an AnimBP formula rather than a static pose).
+const ARKIT_MAPPING = await fetch('arkit_mapping.json').then(r => r.json()).then(d => d.blendshapes);
+
 // Linear position for a 1D control at a given raw value: "rest" is the
 // board position at value=0 (bone location (0,0,0)); "final" is the
 // position at value=entry.finalValue (the bone's most extreme
@@ -1672,6 +1886,32 @@ function buildFaceBoard(rig, container) {
   // Reused by applyEyeAim() to write computed x/y directly into the same
   // GUI control slots (index + min/max) this board already resolved.
   rig.eyeAimGuiIndices = new Map(widgetList.map(w => [w.key, w]));
+
+  // ── Raw-control <-> GUI-slot correspondence, for the ARKit panel's
+  // cosmetic dot sync (see pushArkitControls). MetaHuman's single-axis
+  // named expression sliders (the vast majority of the face board, and
+  // everything the ARKit mapping targets) have a GUI control whose name is
+  // literally the raw "CTRL_expressions.<name>" control with underscores
+  // stripped and side folded into a trailing L/R -- e.g. GUI
+  // "CTRL_L_mouth_cornerPull.ty" <-> raw "CTRL_expressions.mouthCornerPullL".
+  // This is a real, verifiable naming correspondence (checked directly
+  // against this DNA's own control names below), not a guess -- though it
+  // only covers 1D widgets; the handful of genuinely 2D/bidirectional raw
+  // pairs (jawLeft/jawRight, mouthLeft/mouthRight) are left cosmetically
+  // unsynced rather than guessing a sign convention.
+  rig.guiSlotByRawIndex = new Map();
+  for (const w of widgetList) {
+    if (!w.is1D) continue;
+    const axis = w.txIndex !== undefined ? 'tx' : 'ty';
+    const idx = axis === 'tx' ? w.txIndex : w.tyIndex;
+    const min = axis === 'tx' ? w.txMin : w.tyMin;
+    const max = axis === 'tx' ? w.txMax : w.tyMax;
+    const candidate = w.base.replace(/_/g, '').toLowerCase() + (w.side === 'L' || w.side === 'R' ? w.side.toLowerCase() : '');
+    const rawIdx = rig.rawControlByName.get(candidate);
+    if (rawIdx !== undefined) {
+      rig.guiSlotByRawIndex.set(rawIdx, { guiIndex: idx, min, max, widget: w });
+    }
+  }
 
   return widgetList;
 }
@@ -1804,6 +2044,10 @@ function buildFaceBoardPanel(panel, boardId, aspect, boardWidgets, layout, guiBu
       dot.style.top = `${pos.y}%`;
     };
     applyDotPosition();
+    // Exposed so external guiBuf writers (currently: the ARKit-52 panel,
+    // via pushArkitControls' cosmetic sync) can refresh this dot's position
+    // without needing a pointer-drag event.
+    w.refreshDot = applyDotPosition;
 
     let dragging = false;
     let startClientX = 0, startClientY = 0;
@@ -1979,6 +2223,35 @@ function buildFlatGUIList(rig, container) {
   }
 }
 
+// 52 ARKit-blendshape sliders (0..1), each driving a weighted combination of
+// real RigLogic raw controls per ARKIT_MAPPING (see arkit_mapping.json for
+// the Epic source data and the one flagged approximation). Replaces the raw
+// 174-control flat list as the face board's "advanced" panel.
+function buildArkitList(rig, container) {
+  const names = Object.keys(ARKIT_MAPPING).sort();
+  for (const name of names) {
+    const entries = ARKIT_MAPPING[name];
+    const unresolved = entries.filter(e => !rig.rawControlByName.has(e.control.toLowerCase()));
+    const row = document.createElement('div');
+    row.className = 'ctrl';
+    const lbl = document.createElement('label');
+    lbl.title = name + (unresolved.length ? ` (${unresolved.length} unresolved control(s))` : '');
+    lbl.textContent = name;
+    const slider = document.createElement('input');
+    slider.type = 'range'; slider.min = 0; slider.max = 1; slider.step = 0.01; slider.value = 0;
+    const valSpan = document.createElement('span');
+    valSpan.textContent = '0.00';
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      rig.arkitValues.set(name, v);
+      valSpan.textContent = v.toFixed(2);
+      dirty = true;
+    });
+    row.append(lbl, slider, valSpan);
+    container.appendChild(row);
+  }
+}
+
 function buildGUI(rig, containerId, { faceBoard = false } = {}) {
   const { guiCount } = rig;
   if (guiCount === 0) return;
@@ -1992,9 +2265,9 @@ function buildGUI(rig, containerId, { faceBoard = false } = {}) {
     const details = document.createElement('details');
     details.className = 'fb-advanced';
     const summary = document.createElement('summary');
-    summary.textContent = `Advanced: all ${guiCount} controls (flat list)`;
+    summary.textContent = `Advanced: ARKit-52 blendshapes`;
     details.appendChild(summary);
-    buildFlatGUIList(rig, details);
+    buildArkitList(rig, details);
     container.appendChild(details);
   } else {
     buildFlatGUIList(rig, container);

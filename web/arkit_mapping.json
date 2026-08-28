@@ -1,0 +1,511 @@
+{
+ "_source": "Extracted from Epic Games real PoseAsset /Game/MetaHumans/Common/Face/ARKit/PA_MetaHuman_ARKit_Mapping via https://github.com/Dylanyz/ARKitRemap (dev/pose-asset/data/PA_MetaHuman_ARKit_Mapping.posemap.json). 168 non-zero weighted records across 51 of the 52 standard ARKit blendshapes, R^2=0.92 static fit per that repo. NOT guessed.",
+ "_mouthClose_note": "mouthClose has no static pose in Epic asset (computed at runtime via AnimBP: LipsTogether = SafeDivide(MouthClose, JawOpen)). Approximated here with the 4 mouthLipsTogether raw controls at equal weight -- this one entry is NOT from Epic data.",
+ "blendshapes": {
+  "eyeBlinkLeft": [
+   {
+    "control": "eyeblinkl",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookDownLeft": [
+   {
+    "control": "eyelookdownl",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookInLeft": [
+   {
+    "control": "eyelookrightl",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookOutLeft": [
+   {
+    "control": "eyelookleftl",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookUpLeft": [
+   {
+    "control": "eyelookupl",
+    "weight": 1.0
+   }
+  ],
+  "eyeSquintLeft": [
+   {
+    "control": "eyesquintinnerl",
+    "weight": 1.0
+   }
+  ],
+  "eyeWideLeft": [
+   {
+    "control": "eyewidenl",
+    "weight": 1.0
+   }
+  ],
+  "eyeBlinkRight": [
+   {
+    "control": "eyeblinkr",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookDownRight": [
+   {
+    "control": "eyelookdownr",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookInRight": [
+   {
+    "control": "eyelookleftr",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookOutRight": [
+   {
+    "control": "eyelookrightr",
+    "weight": 1.0
+   }
+  ],
+  "eyeLookUpRight": [
+   {
+    "control": "eyelookupr",
+    "weight": 1.0
+   }
+  ],
+  "eyeSquintRight": [
+   {
+    "control": "eyesquintinnerr",
+    "weight": 1.0
+   }
+  ],
+  "eyeWideRight": [
+   {
+    "control": "eyewidenr",
+    "weight": 1.0
+   }
+  ],
+  "jawForward": [
+   {
+    "control": "jawfwd",
+    "weight": 0.999
+   }
+  ],
+  "jawLeft": [
+   {
+    "control": "jawleft",
+    "weight": 1.0
+   }
+  ],
+  "jawRight": [
+   {
+    "control": "jawright",
+    "weight": 1.0
+   }
+  ],
+  "jawOpen": [
+   {
+    "control": "jawopen",
+    "weight": 1.0
+   }
+  ],
+  "mouthFunnel": [
+   {
+    "control": "mouthfunnelul",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthfunnelur",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthfunneldl",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthfunneldr",
+    "weight": 1.0
+   }
+  ],
+  "mouthPucker": [
+   {
+    "control": "mouthlipspurseul",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthlipspurseur",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthlipspursedl",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthlipspursedr",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthlipstowardsul",
+    "weight": 0.412
+   },
+   {
+    "control": "mouthlipstowardsur",
+    "weight": 0.412
+   },
+   {
+    "control": "mouthlipstowardsdl",
+    "weight": 0.412
+   },
+   {
+    "control": "mouthlipstowardsdr",
+    "weight": 0.412
+   },
+   {
+    "control": "mouthfunnelul",
+    "weight": 0.752
+   },
+   {
+    "control": "mouthfunnelur",
+    "weight": 0.752
+   },
+   {
+    "control": "mouthfunneldl",
+    "weight": 0.752
+   },
+   {
+    "control": "mouthfunneldr",
+    "weight": 0.752
+   }
+  ],
+  "mouthLeft": [
+   {
+    "control": "mouthleft",
+    "weight": 1.0
+   }
+  ],
+  "mouthRight": [
+   {
+    "control": "mouthright",
+    "weight": 1.0
+   }
+  ],
+  "mouthSmileLeft": [
+   {
+    "control": "mouthcornerpulll",
+    "weight": 1.0
+   }
+  ],
+  "mouthSmileRight": [
+   {
+    "control": "mouthcornerpullr",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthdimpler",
+    "weight": 0.003
+   }
+  ],
+  "mouthFrownLeft": [
+   {
+    "control": "mouthcornerdepressl",
+    "weight": 1.0
+   }
+  ],
+  "mouthFrownRight": [
+   {
+    "control": "mouthcornerdepressr",
+    "weight": 1.0
+   }
+  ],
+  "mouthDimpleLeft": [
+   {
+    "control": "mouthdimplel",
+    "weight": 1.0
+   }
+  ],
+  "mouthDimpleRight": [
+   {
+    "control": "mouthdimpler",
+    "weight": 1.0
+   }
+  ],
+  "mouthStretchLeft": [
+   {
+    "control": "mouthstretchl",
+    "weight": 1.0
+   }
+  ],
+  "mouthStretchRight": [
+   {
+    "control": "mouthstretchr",
+    "weight": 1.0
+   }
+  ],
+  "mouthRollLower": [
+   {
+    "control": "mouthupperliprollinl",
+    "weight": 0.499
+   },
+   {
+    "control": "mouthupperliprollinr",
+    "weight": 0.499
+   },
+   {
+    "control": "mouthlowerliprollinl",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthlowerliprollinr",
+    "weight": 1.0
+   }
+  ],
+  "mouthRollUpper": [
+   {
+    "control": "mouthupperliprollinl",
+    "weight": 0.998
+   },
+   {
+    "control": "mouthupperliprollinr",
+    "weight": 0.998
+   }
+  ],
+  "mouthShrugLower": [
+   {
+    "control": "jawchinraisedl",
+    "weight": 1.0
+   },
+   {
+    "control": "jawchinraisedr",
+    "weight": 1.0
+   }
+  ],
+  "mouthShrugUpper": [
+   {
+    "control": "jawchinraiseul",
+    "weight": 1.0
+   },
+   {
+    "control": "jawchinraiseur",
+    "weight": 1.0
+   }
+  ],
+  "mouthPressLeft": [
+   {
+    "control": "mouthpressul",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthpressdl",
+    "weight": 1.0
+   }
+  ],
+  "mouthPressRight": [
+   {
+    "control": "mouthpressur",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthpressdr",
+    "weight": 1.0
+   }
+  ],
+  "mouthLowerDownLeft": [
+   {
+    "control": "mouthlowerlipdepressl",
+    "weight": 1.0
+   }
+  ],
+  "mouthLowerDownRight": [
+   {
+    "control": "mouthlowerlipdepressr",
+    "weight": 1.0
+   }
+  ],
+  "mouthUpperUpLeft": [
+   {
+    "control": "mouthupperlipraisel",
+    "weight": 1.0
+   }
+  ],
+  "mouthUpperUpRight": [
+   {
+    "control": "mouthupperlipraiser",
+    "weight": 1.0
+   }
+  ],
+  "browDownLeft": [
+   {
+    "control": "browdownl",
+    "weight": 1.0
+   },
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   }
+  ],
+  "browDownRight": [
+   {
+    "control": "browdownr",
+    "weight": 1.0
+   },
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   }
+  ],
+  "browInnerUp": [
+   {
+    "control": "browlaterall",
+    "weight": 1.0
+   },
+   {
+    "control": "browlateralr",
+    "weight": 1.0
+   },
+   {
+    "control": "browraiseinl",
+    "weight": 1.0
+   },
+   {
+    "control": "browraiseinr",
+    "weight": 1.0
+   }
+  ],
+  "browOuterUpLeft": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "browraiseinl",
+    "weight": 1.0
+   },
+   {
+    "control": "browraiseouterl",
+    "weight": 1.0
+   }
+  ],
+  "browOuterUpRight": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "browraiseinr",
+    "weight": 1.0
+   },
+   {
+    "control": "browraiseouterr",
+    "weight": 1.0
+   }
+  ],
+  "cheekPuff": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "mouthcheekblowl",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthcheekblowr",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthlipsblowl",
+    "weight": 1.0
+   },
+   {
+    "control": "mouthlipsblowr",
+    "weight": 1.0
+   }
+  ],
+  "cheekSquintLeft": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "eyecheekraisel",
+    "weight": 1.0
+   }
+  ],
+  "cheekSquintRight": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "eyecheekraiser",
+    "weight": 1.0
+   }
+  ],
+  "noseSneerLeft": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "nosewrinklel",
+    "weight": 1.0
+   }
+  ],
+  "noseSneerRight": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "nosewrinkler",
+    "weight": 1.0
+   }
+  ],
+  "tongueOut": [
+   {
+    "control": "browlaterall",
+    "weight": 0.031
+   },
+   {
+    "control": "tonguedown",
+    "weight": 0.826
+   },
+   {
+    "control": "tongueright",
+    "weight": 0.07
+   },
+   {
+    "control": "tongueout",
+    "weight": 0.769
+   },
+   {
+    "control": "tongueroll",
+    "weight": 0.2473,
+    "_note": "this head.dna has no tongueRollDown control (only tongueRoll); remapped from Epic source data as closest match"
+   },
+   {
+    "control": "tonguewide",
+    "weight": 0.628
+   }
+  ],
+  "mouthClose": [
+   {
+    "control": "mouthlipstogetherul",
+    "weight": 0.5
+   },
+   {
+    "control": "mouthlipstogetherur",
+    "weight": 0.5
+   },
+   {
+    "control": "mouthlipstogetherdl",
+    "weight": 0.5
+   },
+   {
+    "control": "mouthlipstogetherdr",
+    "weight": 0.5
+   }
+  ]
+ }
+}
