@@ -103,6 +103,7 @@
 import * as THREE from 'https://esm.sh/three@0.133.0';
 import { OrbitControls } from 'https://esm.sh/three@0.133.0/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'https://esm.sh/three@0.133.0/examples/jsm/controls/TransformControls.js';
+import { GLTFLoader } from 'https://esm.sh/three@0.133.0/examples/jsm/loaders/GLTFLoader.js';
 
 // ════════════════════════════════════════════════════════════
 //  CONFIG
@@ -111,6 +112,8 @@ const CHARACTER_DIR = 'metahuman/bazeel';
 const DNA_HEAD = `${CHARACTER_DIR}/head.dna`;
 const DNA_BODY = `${CHARACTER_DIR}/body.dna`;
 const MAPS_DIR = `${CHARACTER_DIR}/Maps`;
+const CLOTHES_DIR = `${CHARACTER_DIR}/clothes`;
+const GROOM_DIR = `${CHARACTER_DIR}/groom`;
 const LOD      = 0;
 // Geometry (positions, deltas) is in metres — C++ converted at load time.
 // Joint output deltas are in centimetres; neutral translations are also in centimetres.
@@ -347,6 +350,163 @@ function buildMaterial(meshName) {
 const WRINKLE_DIR = `${CHARACTER_DIR}/Masks/wrinkle_atlas`;
 const WRINKLE_ATLAS_COUNT = 10;
 const WRINKLE_CHANNELS = ['r', 'g', 'b', 'a'];
+
+// ════════════════════════════════════════════════════════════
+//  GROOM / CLOTHING ATTACHMENTS
+// ════════════════════════════════════════════════════════════
+// Hair, eyebrows and clothing aren't part of the DNA (RigLogic only covers
+// the base face/body mesh + rig) -- these come from Unreal's separate Groom
+// and Skeletal Mesh systems. The user exported them from the Unreal project
+// as FBX (clothes/mh_Outfits.FBX; groom/*_CardsMesh_*.FBX for hair card
+// geometry), which were converted to glTF/GLB via Blender (import FBX,
+// export glTF) since this viewer has no FBX loader. The clothing keeps its
+// real skin (341 joints, verified by name to match this body.dna's own
+// skeleton exactly); the hair/eyebrow card meshes aren't skinned in the
+// export (rigid attachments, matching how Unreal grooms are bound to the
+// head socket) and are just no material (a "WorldGridMaterial" placeholder
+// name), matching the real Groom's own naming -- rebuilt below from the
+// loose Basecolor PNGs sitting next to the FBX/GLB exports.
+const gltfLoader = new GLTFLoader();
+const attachmentTextureCache = new Map();
+function loadAttachmentTexture(path, { srgb = false } = {}) {
+  if (attachmentTextureCache.has(path)) return attachmentTextureCache.get(path);
+  const tex = textureLoader.load(path);
+  // Blender's glTF exporter writes UVs in glTF's top-origin convention
+  // (same as GLTFLoader's own internal textures, which it always loads with
+  // flipY=false) -- these attachment meshes came through that same export
+  // path, so match it here too rather than THREE.TextureLoader's flipY=true
+  // default (which assumes a bottom-origin image convention).
+  tex.flipY = false;
+  tex.encoding = srgb ? THREE.sRGBEncoding : THREE.LinearEncoding;
+  attachmentTextureCache.set(path, tex);
+  return tex;
+}
+
+// Rebinds a glTF-loaded SkinnedMesh's skeleton to this rig's OWN bones
+// (matched by name) instead of the loader's own duplicate bone hierarchy,
+// so the garment deforms with body posing exactly like the DNA meshes do.
+function rebindSkinnedMeshToRig(mesh, rig) {
+  rig.rootBone.updateMatrixWorld(true);
+  const loadedBones = mesh.skeleton.bones;
+  const newBones = loadedBones.map(b => {
+    const rigBone = rig.boneByName.get(b.name);
+    if (!rigBone) throw new Error(`Attachment "${mesh.name}" references bone "${b.name}" not found in ${rig.label}'s skeleton.`);
+    return rigBone;
+  });
+  const boneInverses = newBones.map(b => b.matrixWorld.clone().invert());
+  const skeleton = new THREE.Skeleton(newBones, boneInverses);
+  mesh.bind(skeleton, new THREE.Matrix4()); // identity: skeleton bones are already world-space, matching the DNA mesh pattern
+}
+
+// Loads a skinned garment mesh by node name out of a converted glTF/GLB and
+// rebinds it onto `bodyRig`'s own skeleton.
+async function attachGarment(bodyRig, glbUrl, meshName, { baseColor, normalMap, occlusionMap, inflate = 0.006 } = {}) {
+  const gltf = await gltfLoader.loadAsync(glbUrl);
+  const mesh = gltf.scene.getObjectByName(meshName);
+  if (!mesh || !mesh.isSkinnedMesh) {
+    console.warn(`attachGarment: "${meshName}" not found (or not skinned) in ${glbUrl}`);
+    return null;
+  }
+
+  // Push each vertex out along its normal by a few mm. The garment was
+  // fit to Unreal's own base body shape; this character's actual DNA body
+  // mesh doesn't match that shape exactly (different body sliders/build),
+  // so without this the skin pokes through the cloth in spots (chest,
+  // waist, etc). This is the standard real-time-garment "inflate" trick --
+  // not a fix for a bug in the skinning itself, just hiding the shape
+  // mismatch between two independently-authored meshes.
+  if (inflate > 0) {
+    const posAttr = mesh.geometry.attributes.position;
+    const nrmAttr = mesh.geometry.attributes.normal;
+    for (let i = 0; i < posAttr.count; i++) {
+      posAttr.setXYZ(
+        i,
+        posAttr.getX(i) + nrmAttr.getX(i) * inflate,
+        posAttr.getY(i) + nrmAttr.getY(i) * inflate,
+        posAttr.getZ(i) + nrmAttr.getZ(i) * inflate,
+      );
+    }
+    posAttr.needsUpdate = true;
+  }
+
+  rebindSkinnedMeshToRig(mesh, bodyRig);
+  mesh.material = new THREE.MeshStandardMaterial({
+    map: baseColor ? loadAttachmentTexture(baseColor, { srgb: true }) : null,
+    normalMap: normalMap ? loadAttachmentTexture(normalMap) : null,
+    aoMap: occlusionMap ? loadAttachmentTexture(occlusionMap) : null,
+    roughness: 0.7,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+  });
+  if (mesh.material.aoMap) mesh.geometry.setAttribute('uv2', mesh.geometry.attributes.uv);
+  mesh.frustumCulled = false;
+  mesh.matrixAutoUpdate = false; // world-space skeleton drives it, like the DNA meshes
+  mesh.matrix.identity();
+  scene.add(mesh);
+  return mesh;
+}
+
+// Loads an unskinned hair/eyebrow card mesh and rigidly parents it under
+// `headBone` (Object3D child), so it follows head posing without its own
+// skinning -- matching how Unreal grooms are attached to a head socket.
+async function attachGroomRigid(headBone, glbUrl, texturePath, { doubleSided = true } = {}) {
+  const gltf = await gltfLoader.loadAsync(glbUrl);
+  let mesh = null;
+  gltf.scene.traverse(o => { if (!mesh && o.isMesh) mesh = o; });
+  if (!mesh) {
+    console.warn(`attachGroomRigid: no mesh found in ${glbUrl}`);
+    return null;
+  }
+  // The mesh's TRUE authored world transform, evaluated inside its
+  // originally-loaded scene graph -- NOT assumed to be identity. Blender's
+  // glTF exporter's Y-up conversion can land on a root scene node instead
+  // of being baked into the mesh's own local transform (confirmed: naively
+  // treating the mesh's own local matrix as "world identity" and computing
+  // headBone-relative placement from that produced a ~90deg-rotated,
+  // wildly-offset result -- the mesh actually had an un-accounted parent
+  // transform above it in gltf.scene).
+  gltf.scene.updateMatrixWorld(true);
+  const authoredWorld = mesh.matrixWorld.clone();
+
+  const tex = loadAttachmentTexture(texturePath, { srgb: true });
+  mesh.material = new THREE.MeshStandardMaterial({
+    map: tex,
+    // (no alphaMap -- Three.js's alphaMap reads a texture's GREEN channel,
+    // not its alpha channel; using the same texture there was silently
+    // multiplying in near-zero values and made the whole mesh invisible
+    // regardless of alphaTest. `map`'s own alpha channel + alphaTest below
+    // is the correct, standard cutout path.)
+    // This texture's real alpha "coverage" data maxes out well below the
+    // full 0..1 range a hard opacity mask would use -- verified empirically
+    // (forced a render and inspected the canvas) that alphaTest needs to
+    // sit near 0.01-0.02 for the card mesh to show at all; 0.12 (a plausible
+    // guess off the raw histogram alone) discarded the entire mesh.
+    alphaTest: 0.02,
+    transparent: false, // alphaTest cutout, not blended -- avoids sorting artifacts between overlapping hair cards
+    side: doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+    roughness: 0.45,
+    metalness: 0.0,
+  });
+  mesh.frustumCulled = false;
+
+  // Parenting under headBone would double-apply its transform on top of
+  // the mesh's own already-absolute authored position, so bake headBone's
+  // CURRENT (neutral pose) inverse composed with the mesh's real authored
+  // world transform into its new local transform -- after that, normal
+  // Three.js parenting keeps it correctly following any subsequent head
+  // movement.
+  // updateMatrixWorld(true) only refreshes headBone and its children, not
+  // ancestors -- if any ancestor's matrixWorld is stale (this runs after an
+  // async glTF load, well after the render loop's first evaluate() pass),
+  // headBone.matrixWorld itself would be computed from a stale parent.
+  // updateWorldMatrix(true, false) walks up through parents first.
+  headBone.updateWorldMatrix(true, false);
+  const local = new THREE.Matrix4().copy(headBone.matrixWorld).invert().multiply(authoredWorld);
+  mesh.matrix.copy(local);
+  mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+  headBone.add(mesh);
+  return mesh;
+}
 
 async function setupWrinkleBlend(rig, mesh) {
   const material = mesh.material;
@@ -860,6 +1020,12 @@ function buildRig(handle, label, mode) {
     mesh.name = meshName;
     mesh.frustumCulled = false;
     mesh.userData.channelMapIndex = mi;
+    // eyeEdge (the thin eyelid-margin sliver) has no verified real Blender
+    // material -- its flat-tan fallback color rendered as a bright white
+    // ring right along the eyelid margin (confirmed by hiding it: the rim
+    // disappears and the eye looks correct/natural without it). No real
+    // material data exists to color it properly, so just don't render it.
+    if (meshName === 'eyeEdge_lod0_mesh') mesh.visible = false;
 
     // Explicit identity bind matrix: the skeleton is in world space.
     mesh.bind(skeleton, new THREE.Matrix4());
@@ -1152,6 +1318,29 @@ scene.add(bodyRig.rootBone, bodyRig.group);
 const headMainMesh = headRig.group.children.find(m => m.isMesh && m.name === 'head_lod0_mesh');
 if (headMainMesh) {
   setupWrinkleBlend(headRig, headMainMesh).catch(err => console.warn('setupWrinkleBlend failed:', err));
+}
+
+// ── Clothing (skinned to bodyRig's own skeleton) ──
+attachGarment(bodyRig, `${CLOTHES_DIR}/mh_Outfits_LOD0.glb`, 'MI_WI_DefaultGarment_M_DG_bodyShapeA_Shirt', {
+  baseColor: `${CLOTHES_DIR}/MI_WI_DefaultGarment_M_DG_bodyShapeA_Shirt_BaseColor.png`,
+  normalMap: `${CLOTHES_DIR}/MI_WI_DefaultGarment_M_DG_bodyShapeA_Shirt_Normal.png`,
+  occlusionMap: `${CLOTHES_DIR}/MI_WI_DefaultGarment_M_DG_bodyShapeA_Shirt_Occlusion.png`,
+}).catch(err => console.warn('attachGarment (Shirt) failed:', err));
+attachGarment(bodyRig, `${CLOTHES_DIR}/mh_Outfits_LOD0.glb`, 'MI_WI_DefaultGarment_M_DG_bodyShapeA_Short', {
+  baseColor: `${CLOTHES_DIR}/MI_WI_DefaultGarment_M_DG_bodyShapeA_Short_BaseColor.png`,
+  normalMap: `${CLOTHES_DIR}/MI_WI_DefaultGarment_M_DG_bodyShapeA_Short_Normal.png`,
+  occlusionMap: `${CLOTHES_DIR}/MI_WI_DefaultGarment_M_DG_bodyShapeA_Short_Occlusion.png`,
+}).catch(err => console.warn('attachGarment (Short) failed:', err));
+
+// ── Hair / eyebrows (unskinned card meshes, rigidly attached to the head bone) ──
+const headBoneForGroom = headRig.boneByName.get('head');
+if (headBoneForGroom) {
+  attachGroomRigid(headBoneForGroom, `${GROOM_DIR}/Hair_S_Casual_LOD0.glb`, `${GROOM_DIR}/MI_WI_Hair_S_Casual_Hair_Cards_BaseColor.png`)
+    .catch(err => console.warn('attachGroomRigid (hair) failed:', err));
+  attachGroomRigid(headBoneForGroom, `${GROOM_DIR}/Eyebrows_L_Shaded_LOD0.glb`, `${GROOM_DIR}/MI_WI_Eyebrows_L_Shaded_Hair_BaseColor.png`)
+    .catch(err => console.warn('attachGroomRigid (eyebrows) failed:', err));
+} else {
+  console.warn('No "head" bone found on headRig -- skipping hair/eyebrow attachment.');
 }
 
 // ── Head-to-body linkage ────────────────────────────────────────────────
@@ -1849,6 +2038,13 @@ window.__dumpAnimatedMapNames = (rig) => {
 };
 window.__getSelection = () => selection;
 window.__selectBone = selectBone;
+window.__forceRender = () => renderer.render(scene, camera);
+window.__dumpRawNames = (rig) => {
+  const n = rl_get_raw_control_count(rig.handle);
+  const names = [];
+  for (let i = 0; i < n; i++) names.push(RL.UTF8ToString(rl_get_raw_control_name(rig.handle, i)));
+  return names;
+};
 
 // ════════════════════════════════════════════════════════════
 //  RENDER LOOP
