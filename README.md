@@ -5,7 +5,7 @@ This is a fork of Epic Games' [OpenRigLogic](https://github.com/EpicGames/OpenRi
 Two things were added on top of the upstream library:
 
 1. **`riglogic_api.cpp`** — a WebAssembly bridge that exposes RigLogic/DNA evaluation to JavaScript.
-2. **`index.html` / `js/` / `metahuman/`** — a Three.js demo that consumes that bridge to render and control a MetaHuman in the browser. These live at the repository root (rather than a `web/` subfolder) specifically so the repo can be served as-is by GitHub Pages — see [Deploying to GitHub Pages](#deploying-to-github-pages) below.
+2. **`index.html` / `js/` / `metahuman/`** — a Three.js demo that consumes that bridge to render and control a MetaHuman in the browser. 
 
 Everything below "Original OpenRigLogic README" is unmodified upstream documentation.
 
